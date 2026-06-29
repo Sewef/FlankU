@@ -5,6 +5,8 @@
   --muted: #66707c;
   --line: #d9dfd6;
   --accent: #255f85;
+  --accent-contrast: #ffffff;
+  --secondary: #6c757d;
   --shadow: 0 16px 36px rgba(27, 31, 36, 0.1);
 
   color: var(--text);
@@ -29,11 +31,11 @@ button {
   background: var(--accent);
   border: 0;
   border-radius: 6px;
-  color: #ffffff;
+  color: var(--accent-contrast);
   cursor: pointer;
   font: inherit;
+  font-size: 14px;
   font-weight: 750;
-  min-height: 38px;
   padding: 8px 12px;
 }
 
@@ -87,7 +89,7 @@ h1 {
 }
 
 .badge {
-  background: #eef2eb;
+  background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 999px;
   color: var(--muted);
@@ -113,7 +115,7 @@ h1 {
   text-align: center;
 }
 
-.summary div + div {
+.summary div+div {
   border-left: 1px solid var(--line);
 }
 
@@ -154,6 +156,41 @@ h1 {
   width: 17px;
 }
 
+.team-tabs {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.team-tabs button {
+  align-items: center;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-bottom: 3px solid var(--team-color);
+  color: var(--text);
+  display: flex;
+  font-size: 12px;
+  justify-content: space-between;
+  min-height: 36px;
+  padding: 7px 8px;
+}
+
+.team-tabs button.active {
+  background: color-mix(in srgb, var(--team-color), var(--panel) 86%);
+  border-color: var(--team-color);
+}
+
+.team-tabs span {
+  background: var(--team-color);
+  border-radius: 999px;
+  color: var(--accent-contrast);
+  display: inline-flex;
+  font-size: 11px;
+  justify-content: center;
+  min-width: 20px;
+  padding: 2px 6px;
+}
+
 .token-list {
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -163,7 +200,6 @@ h1 {
 table {
   border-collapse: collapse;
   font-size: 13px;
-  min-width: 760px;
   width: 100%;
 }
 
@@ -176,7 +212,7 @@ td {
 }
 
 th {
-  background: #f0f3ed;
+  background: color-mix(in srgb, var(--panel), var(--muted) 12%);
   color: var(--muted);
   font-size: 12px;
   font-weight: 850;
@@ -222,7 +258,7 @@ tr:last-child td {
 }
 
 select[data-team-toggle] {
-  background: #ffffff;
+  background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 6px;
   color: var(--text);
@@ -256,12 +292,12 @@ select[data-team-toggle] {
 }
 
 .status.yes {
-  background: #dcefe4;
+  background: color-mix(in srgb, #2f9e44, var(--panel) 78%);
   color: #1f6d42;
 }
 
 .status.no {
-  background: #f1e3e0;
+  background: color-mix(in srgb, #e03131, var(--panel) 84%);
   color: #914136;
 }
 

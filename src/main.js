@@ -6,19 +6,19 @@ const TEAM_KEY = `${EXTENSION_ID}/team`;
 const IMMUNE_KEY = `${EXTENSION_ID}/immune`;
 const HITBOX_KEY = `${EXTENSION_ID}/hitbox`;
 const HITBOX_TOKEN_KEY = `${EXTENSION_ID}/hitbox-token-id`;
-const TEAM_ALLY = "ally";
+const TEAM_DEFAULT = "default";
 const TEAM_1 = "team1";
 const TEAM_2 = "team2";
 const TEAM_3 = "team3";
-const TEAMS = [TEAM_ALLY, TEAM_1, TEAM_2, TEAM_3];
+const TEAMS = [TEAM_DEFAULT, TEAM_1, TEAM_2, TEAM_3];
 const TEAM_LABELS = {
-  [TEAM_ALLY]: "Ally",
+  [TEAM_DEFAULT]: "Default",
   [TEAM_1]: "Team 1",
   [TEAM_2]: "Team 2",
   [TEAM_3]: "Team 3",
 };
 const TEAM_COLORS = {
-  [TEAM_ALLY]: "#2f9e44",
+  [TEAM_DEFAULT]: "#2f9e44",
   [TEAM_1]: "#e03131",
   [TEAM_2]: "#1971c2",
   [TEAM_3]: "#f08c00",
@@ -28,6 +28,7 @@ let gridDpi = 150;
 let gridScale = null;
 let unsubscribeItems = null;
 let unsubscribeGrid = null;
+let unsubscribeTheme = null;
 let isUpdatingTeam = false;
 let isUpdatingImmune = false;
 let isUpdatingHitboxes = false;
@@ -40,33 +41,33 @@ document.querySelector("#app").innerHTML = `
     <header class="header">
       <div>
         <p class="eyebrow">FlankWatch</p>
-        <h1>Token Cells</h1>
+        <button id="refresh" type="button">Refresh</button>
+        <label class="option-toggle">
+          <input id="show-hitbox" type="checkbox" />
+          Show Hitbox
+        </label>
       </div>
-      <span id="scene-state" class="badge">Offline</span>
     </header>
 
-    <section class="summary" aria-label="Grid summary">
-      <div>
-        <span id="token-count">0</span>
-        <small>tokens</small>
-      </div>
-      <div>
-        <span id="grid-dpi">-</span>
-        <small>grid dpi</small>
-      </div>
-      <div>
-        <span id="grid-scale">-</span>
-        <small>scale</small>
-      </div>
+    <section class="toolbar" aria-label="Display controls">
+
     </section>
 
-    <section class="toolbar" aria-label="Display controls">
-      <button id="refresh" type="button">Refresh</button>
-      <label class="option-toggle">
-        <input id="show-hitbox" type="checkbox" />
-        Show Hitbox
-      </label>
-    </section>
+    <nav class="team-tabs" aria-label="Team tabs">
+      ${TEAMS.map((team, index) => {
+  return `
+          <button
+            type="button"
+            class="${index === 0 ? "active" : ""}"
+            data-team-tab="${team}"
+            style="--team-color: ${TEAM_COLORS[team]}"
+          >
+            ${TEAM_LABELS[team]}
+            <span id="team-count-${team}">0</span>
+          </button>
+        `;
+}).join("")}
+    </nav>
 
     <section class="token-list" aria-label="Token cell positions">
       <table>
@@ -77,14 +78,12 @@ document.querySelector("#app").innerHTML = `
             <th>Immune</th>
             <th>Adjacent Ally</th>
             <th>Flanked</th>
-            <th>Anchor</th>
+            <th>Position</th>
             <th>Size</th>
-            <th>Cells</th>
           </tr>
         </thead>
         <tbody id="token-rows">
           <tr>
-            <td colspan="8" class="empty">Open an Owlbear Rodeo scene to start.</td>
           </tr>
         </tbody>
       </table>
@@ -98,9 +97,24 @@ const gridDpiEl = document.querySelector("#grid-dpi");
 const gridScaleEl = document.querySelector("#grid-scale");
 const tokenRowsEl = document.querySelector("#token-rows");
 const showHitboxEl = document.querySelector("#show-hitbox");
+const teamTabsEl = document.querySelector(".team-tabs");
+
+let activeTeam = localStorage.getItem(`${EXTENSION_ID}/active-team`) || TEAM_DEFAULT;
 
 document.querySelector("#refresh").addEventListener("click", refreshTokenPositions);
 tokenRowsEl.addEventListener("change", handleTeamChange);
+teamTabsEl.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-team-tab]");
+
+  if (!button) {
+    return;
+  }
+
+  activeTeam = button.dataset.teamTab;
+  localStorage.setItem(`${EXTENSION_ID}/active-team`, activeTeam);
+  updateActiveTab();
+  refreshTokenPositions();
+});
 showHitboxEl.checked = showHitbox;
 showHitboxEl.addEventListener("change", async () => {
   showHitbox = showHitboxEl.checked;
@@ -116,10 +130,14 @@ showHitboxEl.addEventListener("change", async () => {
 if (OBR.isAvailable) {
   OBR.onReady(setup);
 } else {
-  sceneStateEl.textContent = "Preview";
+  if (sceneStateEl) {
+    sceneStateEl.textContent = "Preview";
+  }
 }
 
 async function setup() {
+  applyTheme(await OBR.theme.getTheme());
+  unsubscribeTheme = OBR.theme.onChange(applyTheme);
   await registerContextMenus();
   await refreshGrid();
 
@@ -134,7 +152,9 @@ async function setup() {
 
 async function handleSceneReady(ready) {
   if (!ready) {
-    sceneStateEl.textContent = "No scene";
+    if (sceneStateEl) {
+      sceneStateEl.textContent = "No scene";
+    }
     unsubscribeItems?.();
     unsubscribeItems = null;
     renderTokens([]);
@@ -142,7 +162,6 @@ async function handleSceneReady(ready) {
     return;
   }
 
-  sceneStateEl.textContent = "Online";
   unsubscribeItems?.();
   unsubscribeItems = OBR.scene.items.onChange(scheduleTokenRefresh);
   await refreshTokenPositions();
@@ -151,8 +170,22 @@ async function handleSceneReady(ready) {
 async function refreshGrid() {
   gridDpi = await OBR.scene.grid.getDpi();
   gridScale = await OBR.scene.grid.getScale();
-  gridDpiEl.textContent = String(gridDpi);
-  gridScaleEl.textContent = gridScale.raw;
+  gridDpiEl && (gridDpiEl.textContent = String(gridDpi));
+  gridScaleEl && (gridScaleEl.textContent = gridScale.raw);
+}
+
+function applyTheme(theme) {
+  const root = document.documentElement;
+
+  root.style.setProperty("--bg", theme.background.default);
+  root.style.setProperty("--panel", theme.background.paper);
+  root.style.setProperty("--text", theme.text.primary);
+  root.style.setProperty("--muted", theme.text.secondary);
+  root.style.setProperty("--line", theme.text.disabled);
+  root.style.setProperty("--accent", theme.primary.main);
+  root.style.setProperty("--accent-contrast", theme.primary.contrastText);
+  root.style.setProperty("--secondary", theme.secondary.main);
+  root.dataset.themeMode = theme.mode.toLowerCase();
 }
 
 async function refreshTokenPositions() {
@@ -213,7 +246,7 @@ function toTokenCellInfo(item) {
 
 function getTeam(item) {
   const team = item.metadata?.[TEAM_KEY];
-  return TEAMS.includes(team) ? team : TEAM_ALLY;
+  return TEAMS.includes(team) ? team : TEAM_DEFAULT;
 }
 
 function isImmune(item) {
@@ -271,7 +304,7 @@ async function setTeam(ids, team) {
       (item) => ids.includes(item.id) && isCharacterImage(item),
       (items) => {
         for (const item of items) {
-          if (team === TEAM_ALLY) {
+          if (team === TEAM_DEFAULT) {
             delete item.metadata[TEAM_KEY];
           } else {
             item.metadata[TEAM_KEY] = team;
@@ -523,6 +556,12 @@ function compareTokenInfo(a, b) {
   return a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
 }
 
+function updateActiveTab() {
+  for (const button of teamTabsEl.querySelectorAll("[data-team-tab]")) {
+    button.classList.toggle("active", button.dataset.teamTab === activeTeam);
+  }
+}
+
 async function syncHitboxes(tokens) {
   if (isUpdatingHitboxes || !showHitbox || !(await OBR.scene.isReady())) {
     return;
@@ -561,7 +600,7 @@ async function getHitboxes() {
 }
 
 function buildTokenHitboxes(token) {
-  const color = TEAM_COLORS[token.team] ?? TEAM_COLORS[TEAM_ALLY];
+  const color = TEAM_COLORS[token.team] ?? TEAM_COLORS[TEAM_DEFAULT];
   const width = token.size.width * gridDpi;
   const height = token.size.height * gridDpi;
 
@@ -582,6 +621,7 @@ function buildTokenHitboxes(token) {
       .strokeWidth(3)
       .disableHit(true)
       .locked(true)
+      .attachedTo(token.id)
       .metadata({
         [HITBOX_KEY]: true,
         [HITBOX_TOKEN_KEY]: token.id,
@@ -591,34 +631,36 @@ function buildTokenHitboxes(token) {
 }
 
 function renderTokens(tokens) {
-  tokenCountEl.textContent = String(tokens.length);
+  tokenCountEl && (tokenCountEl.textContent = String(tokens.length));
+  updateActiveTab();
+  updateTeamCounts(tokens);
+  const visibleTokens = tokens.filter((token) => token.team === activeTeam);
 
-  if (!tokens.length) {
+  if (!visibleTokens.length) {
     tokenRowsEl.innerHTML = `
       <tr>
-        <td colspan="8" class="empty">No visible character tokens found.</td>
+        <td colspan="8" class="empty">No ${TEAM_LABELS[activeTeam]} tokens found.</td>
       </tr>
     `;
     return;
   }
 
-  tokenRowsEl.innerHTML = tokens
+  tokenRowsEl.innerHTML = visibleTokens
     .map((token) => {
       return `
         <tr>
           <td>
             <strong>${escapeHtml(token.name)}</strong>
-            <small>${escapeHtml(token.id)}</small>
           </td>
           <td>
             <select data-team-toggle data-token-id="${escapeHtml(token.id)}">
               ${TEAMS.map((team) => {
-                return `
+        return `
                   <option value="${team}" ${token.team === team ? "selected" : ""}>
                     ${TEAM_LABELS[team]}
                   </option>
                 `;
-              }).join("")}
+      }).join("")}
             </select>
           </td>
           <td>
@@ -643,11 +685,20 @@ function renderTokens(tokens) {
           </td>
           <td>${formatCell(token.anchor)}</td>
           <td>${token.size.width}x${token.size.height}</td>
-          <td>${token.cells.map(formatCell).join(" ")}</td>
         </tr>
       `;
     })
     .join("");
+}
+
+function updateTeamCounts(tokens) {
+  for (const team of TEAMS) {
+    const countEl = document.querySelector(`#team-count-${team}`);
+
+    if (countEl) {
+      countEl.textContent = String(tokens.filter((token) => token.team === team).length);
+    }
+  }
 }
 
 function formatCell(cell) {
@@ -667,4 +718,5 @@ window.addEventListener("pagehide", () => {
   window.clearTimeout(refreshTimer);
   unsubscribeItems?.();
   unsubscribeGrid?.();
+  unsubscribeTheme?.();
 });

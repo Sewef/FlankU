@@ -5,13 +5,13 @@ import "./team-menu.css";
 const EXTENSION_ID = "com.flankwatch";
 const TEAM_KEY = `${EXTENSION_ID}/team`;
 const IMMUNE_KEY = `${EXTENSION_ID}/immune`;
-const TEAM_ALLY = "ally";
+const TEAM_DEFAULT = "default";
 const TEAM_1 = "team1";
 const TEAM_2 = "team2";
 const TEAM_3 = "team3";
 
 const TEAMS = [
-  { id: TEAM_ALLY, label: "Ally", color: "#2f9e44" },
+  { id: TEAM_DEFAULT, label: "Default", color: "#2f9e44" },
   { id: TEAM_1, label: "Team 1", color: "#e03131" },
   { id: TEAM_2, label: "Team 2", color: "#1971c2" },
   { id: TEAM_3, label: "Team 3", color: "#f08c00" },
@@ -37,6 +37,13 @@ document.querySelector("#team-menu").innerHTML = `
 
 const messageEl = document.querySelector("#team-menu-message");
 const immuneToggleEl = document.querySelector("#immune-toggle");
+
+if (OBR.isAvailable) {
+  OBR.onReady(async () => {
+    applyTheme(await OBR.theme.getTheme());
+    OBR.theme.onChange(applyTheme);
+  });
+}
 
 document.querySelector("#team-menu").addEventListener("click", async (event) => {
   const button = event.target.closest("[data-team]");
@@ -73,7 +80,7 @@ async function setTeam(ids, team) {
     (item) => ids.includes(item.id) && item.type === "IMAGE" && item.layer === "CHARACTER",
     (items) => {
       for (const item of items) {
-        if (team === TEAM_ALLY) {
+        if (team === TEAM_DEFAULT) {
           delete item.metadata[TEAM_KEY];
         } else {
           item.metadata[TEAM_KEY] = team;
@@ -96,4 +103,16 @@ async function setImmune(ids, immune) {
       }
     },
   );
+}
+
+function applyTheme(theme) {
+  const root = document.documentElement;
+
+  root.style.setProperty("--bg", theme.background.default);
+  root.style.setProperty("--panel", theme.background.paper);
+  root.style.setProperty("--text", theme.text.primary);
+  root.style.setProperty("--muted", theme.text.secondary);
+  root.style.setProperty("--line", theme.text.disabled);
+  root.style.setProperty("--accent", theme.primary.main);
+  root.style.setProperty("--focus", theme.primary.light);
 }
