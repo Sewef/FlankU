@@ -194,7 +194,9 @@ td:first-child {
 }
 
 td:nth-child(2),
-td:nth-child(3) {
+td:nth-child(3),
+td:nth-child(4),
+td:nth-child(5) {
   text-align: center;
 }
 
@@ -219,13 +221,25 @@ tr:last-child td {
   border-bottom: 0;
 }
 
-.team-toggle {
+select[data-team-toggle] {
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  min-height: 30px;
+  padding: 4px 6px;
+  width: 86px;
+}
+
+.immune-toggle {
   align-items: center;
   display: inline-flex;
   justify-content: center;
 }
 
-.team-toggle input {
+.immune-toggle input {
   accent-color: var(--accent);
   height: 17px;
   width: 17px;

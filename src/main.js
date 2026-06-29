@@ -3,16 +3,33 @@ import OBR, { buildShape } from "@owlbear-rodeo/sdk";
 
 const EXTENSION_ID = "com.flankwatch";
 const TEAM_KEY = `${EXTENSION_ID}/team`;
+const IMMUNE_KEY = `${EXTENSION_ID}/immune`;
 const HITBOX_KEY = `${EXTENSION_ID}/hitbox`;
 const HITBOX_TOKEN_KEY = `${EXTENSION_ID}/hitbox-token-id`;
 const TEAM_ALLY = "ally";
-const TEAM_ENEMY = "enemy";
+const TEAM_1 = "team1";
+const TEAM_2 = "team2";
+const TEAM_3 = "team3";
+const TEAMS = [TEAM_ALLY, TEAM_1, TEAM_2, TEAM_3];
+const TEAM_LABELS = {
+  [TEAM_ALLY]: "Ally",
+  [TEAM_1]: "Team 1",
+  [TEAM_2]: "Team 2",
+  [TEAM_3]: "Team 3",
+};
+const TEAM_COLORS = {
+  [TEAM_ALLY]: "#2f9e44",
+  [TEAM_1]: "#e03131",
+  [TEAM_2]: "#1971c2",
+  [TEAM_3]: "#f08c00",
+};
 
 let gridDpi = 150;
 let gridScale = null;
 let unsubscribeItems = null;
 let unsubscribeGrid = null;
 let isUpdatingTeam = false;
+let isUpdatingImmune = false;
 let isUpdatingHitboxes = false;
 let showHitbox = localStorage.getItem(`${EXTENSION_ID}/show-hitbox`) === "true";
 let refreshTimer = null;
@@ -56,7 +73,8 @@ document.querySelector("#app").innerHTML = `
         <thead>
           <tr>
             <th>Name</th>
-            <th>Ally</th>
+            <th>Team</th>
+            <th>Immune</th>
             <th>Adjacent Ally</th>
             <th>Flanked</th>
             <th>Anchor</th>
@@ -66,7 +84,7 @@ document.querySelector("#app").innerHTML = `
         </thead>
         <tbody id="token-rows">
           <tr>
-            <td colspan="7" class="empty">Open an Owlbear Rodeo scene to start.</td>
+            <td colspan="8" class="empty">Open an Owlbear Rodeo scene to start.</td>
           </tr>
         </tbody>
       </table>
@@ -102,6 +120,7 @@ if (OBR.isAvailable) {
 }
 
 async function setup() {
+  await registerContextMenus();
   await refreshGrid();
 
   unsubscribeGrid = OBR.scene.grid.onChange(async () => {
@@ -182,6 +201,7 @@ function toTokenCellInfo(item) {
     id: item.id,
     name: item.name || "Unnamed",
     team: getTeam(item),
+    immune: isImmune(item),
     position: item.position,
     origin,
     anchor,
@@ -192,32 +212,102 @@ function toTokenCellInfo(item) {
 }
 
 function getTeam(item) {
-  return item.metadata?.[TEAM_KEY] === TEAM_ALLY ? TEAM_ALLY : TEAM_ENEMY;
+  const team = item.metadata?.[TEAM_KEY];
+  return TEAMS.includes(team) ? team : TEAM_ALLY;
+}
+
+function isImmune(item) {
+  return item.metadata?.[IMMUNE_KEY] === true;
+}
+
+async function registerContextMenus() {
+  await OBR.contextMenu.create({
+    id: `${EXTENSION_ID}/team-menu`,
+    icons: [
+      {
+        icon: "/icon.svg",
+        label: "FlankWatch",
+        filter: { min: 1 },
+      },
+    ],
+    embed: {
+      url: "/team-menu.html",
+      height: 150,
+    },
+  });
 }
 
 async function handleTeamChange(event) {
-  const checkbox = event.target.closest("[data-team-toggle]");
+  const control = event.target.closest("[data-team-toggle]");
+  const immuneToggle = event.target.closest("[data-immune-toggle]");
 
-  if (!checkbox || isUpdatingTeam) {
+  if (immuneToggle) {
+    if (isUpdatingImmune) {
+      return;
+    }
+
+    await setImmune([immuneToggle.dataset.tokenId], immuneToggle.checked);
     return;
   }
 
-  const id = checkbox.dataset.tokenId;
-  const team = checkbox.checked ? TEAM_ALLY : TEAM_ENEMY;
+  if (!control || isUpdatingTeam) {
+    return;
+  }
+
+  const id = control.dataset.tokenId;
+  const team = control.value;
+  await setTeam([id], team);
+}
+
+async function setTeam(ids, team) {
+  if (!ids.length || !TEAMS.includes(team)) {
+    return;
+  }
+
   isUpdatingTeam = true;
 
   try {
     await OBR.scene.items.updateItems(
-      (item) => item.id === id && isCharacterImage(item),
+      (item) => ids.includes(item.id) && isCharacterImage(item),
       (items) => {
         for (const item of items) {
-          item.metadata[TEAM_KEY] = team;
+          if (team === TEAM_ALLY) {
+            delete item.metadata[TEAM_KEY];
+          } else {
+            item.metadata[TEAM_KEY] = team;
+          }
         }
       },
     );
     await refreshTokenPositions();
   } finally {
     isUpdatingTeam = false;
+  }
+}
+
+async function setImmune(ids, immune) {
+  if (!ids.length) {
+    return;
+  }
+
+  isUpdatingImmune = true;
+
+  try {
+    await OBR.scene.items.updateItems(
+      (item) => ids.includes(item.id) && isCharacterImage(item),
+      (items) => {
+        for (const item of items) {
+          if (immune) {
+            item.metadata[IMMUNE_KEY] = true;
+          } else {
+            delete item.metadata[IMMUNE_KEY];
+          }
+        }
+      },
+    );
+    await refreshTokenPositions();
+  } finally {
+    isUpdatingImmune = false;
   }
 }
 
@@ -311,6 +401,10 @@ function isAdjacentToAlly(token, tokens) {
 }
 
 function isFlanked(token, tokens) {
+  if (token.immune) {
+    return false;
+  }
+
   const requiredContacts = getRequiredFlankContacts(token);
 
   if (!requiredContacts) {
@@ -467,7 +561,7 @@ async function getHitboxes() {
 }
 
 function buildTokenHitboxes(token) {
-  const color = token.team === TEAM_ALLY ? "#2f9e44" : "#e03131";
+  const color = TEAM_COLORS[token.team] ?? TEAM_COLORS[TEAM_ALLY];
   const width = token.size.width * gridDpi;
   const height = token.size.height * gridDpi;
 
@@ -502,7 +596,7 @@ function renderTokens(tokens) {
   if (!tokens.length) {
     tokenRowsEl.innerHTML = `
       <tr>
-        <td colspan="7" class="empty">No visible character tokens found.</td>
+        <td colspan="8" class="empty">No visible character tokens found.</td>
       </tr>
     `;
     return;
@@ -517,12 +611,23 @@ function renderTokens(tokens) {
             <small>${escapeHtml(token.id)}</small>
           </td>
           <td>
-            <label class="team-toggle">
+            <select data-team-toggle data-token-id="${escapeHtml(token.id)}">
+              ${TEAMS.map((team) => {
+                return `
+                  <option value="${team}" ${token.team === team ? "selected" : ""}>
+                    ${TEAM_LABELS[team]}
+                  </option>
+                `;
+              }).join("")}
+            </select>
+          </td>
+          <td>
+            <label class="immune-toggle">
               <input
-                data-team-toggle
+                data-immune-toggle
                 data-token-id="${escapeHtml(token.id)}"
                 type="checkbox"
-                ${token.team === TEAM_ALLY ? "checked" : ""}
+                ${token.immune ? "checked" : ""}
               />
             </label>
           </td>
