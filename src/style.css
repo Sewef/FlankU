@@ -42,6 +42,11 @@ button:focus-visible {
   outline-offset: 2px;
 }
 
+input:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--accent), transparent 65%);
+  outline-offset: 2px;
+}
+
 #app {
   min-height: 100vh;
   padding: 14px;
@@ -125,6 +130,28 @@ h1 {
   color: var(--muted);
   font-size: 12px;
   font-weight: 750;
+}
+
+.toolbar {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.option-toggle {
+  align-items: center;
+  color: var(--muted);
+  display: inline-flex;
+  font-size: 14px;
+  font-weight: 750;
+  gap: 8px;
+}
+
+.option-toggle input {
+  accent-color: var(--accent);
+  height: 17px;
+  width: 17px;
 }
 
 .token-list {

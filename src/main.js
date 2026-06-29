@@ -1,8 +1,10 @@
 import "./style.css";
-import OBR from "@owlbear-rodeo/sdk";
+import OBR, { buildShape } from "@owlbear-rodeo/sdk";
 
 const EXTENSION_ID = "com.flankwatch";
 const TEAM_KEY = `${EXTENSION_ID}/team`;
+const HITBOX_KEY = `${EXTENSION_ID}/hitbox`;
+const HITBOX_TOKEN_KEY = `${EXTENSION_ID}/hitbox-token-id`;
 const TEAM_ALLY = "ally";
 const TEAM_ENEMY = "enemy";
 
@@ -11,6 +13,10 @@ let gridScale = null;
 let unsubscribeItems = null;
 let unsubscribeGrid = null;
 let isUpdatingTeam = false;
+let isUpdatingHitboxes = false;
+let showHitbox = localStorage.getItem(`${EXTENSION_ID}/show-hitbox`) === "true";
+let refreshTimer = null;
+let ignoreItemChangesUntil = 0;
 
 document.querySelector("#app").innerHTML = `
   <main class="panel">
@@ -37,7 +43,13 @@ document.querySelector("#app").innerHTML = `
       </div>
     </section>
 
-    <button id="refresh" type="button">Refresh</button>
+    <section class="toolbar" aria-label="Display controls">
+      <button id="refresh" type="button">Refresh</button>
+      <label class="option-toggle">
+        <input id="show-hitbox" type="checkbox" />
+        Show Hitbox
+      </label>
+    </section>
 
     <section class="token-list" aria-label="Token cell positions">
       <table>
@@ -67,9 +79,21 @@ const tokenCountEl = document.querySelector("#token-count");
 const gridDpiEl = document.querySelector("#grid-dpi");
 const gridScaleEl = document.querySelector("#grid-scale");
 const tokenRowsEl = document.querySelector("#token-rows");
+const showHitboxEl = document.querySelector("#show-hitbox");
 
 document.querySelector("#refresh").addEventListener("click", refreshTokenPositions);
 tokenRowsEl.addEventListener("change", handleTeamChange);
+showHitboxEl.checked = showHitbox;
+showHitboxEl.addEventListener("change", async () => {
+  showHitbox = showHitboxEl.checked;
+  localStorage.setItem(`${EXTENSION_ID}/show-hitbox`, String(showHitbox));
+
+  if (showHitbox) {
+    await refreshTokenPositions();
+  } else {
+    await clearHitboxes();
+  }
+});
 
 if (OBR.isAvailable) {
   OBR.onReady(setup);
@@ -95,12 +119,13 @@ async function handleSceneReady(ready) {
     unsubscribeItems?.();
     unsubscribeItems = null;
     renderTokens([]);
+    await clearHitboxes();
     return;
   }
 
   sceneStateEl.textContent = "Online";
   unsubscribeItems?.();
-  unsubscribeItems = OBR.scene.items.onChange(refreshTokenPositions);
+  unsubscribeItems = OBR.scene.items.onChange(scheduleTokenRefresh);
   await refreshTokenPositions();
 }
 
@@ -112,8 +137,7 @@ async function refreshGrid() {
 }
 
 async function refreshTokenPositions() {
-  if (!(await OBR.scene.isReady())) {
-    renderTokens([]);
+  if (isUpdatingHitboxes || !(await OBR.scene.isReady())) {
     return;
   }
 
@@ -128,7 +152,18 @@ async function refreshTokenPositions() {
     };
   });
 
-  renderTokens(tokensWithAdjacency.sort(compareTokenInfo));
+  const sortedTokens = tokensWithAdjacency.sort(compareTokenInfo);
+  renderTokens(sortedTokens);
+  await syncHitboxes(sortedTokens);
+}
+
+function scheduleTokenRefresh() {
+  if (Date.now() < ignoreItemChangesUntil) {
+    return;
+  }
+
+  window.clearTimeout(refreshTimer);
+  refreshTimer = window.setTimeout(refreshTokenPositions, 80);
 }
 
 function isCharacterImage(item) {
@@ -147,6 +182,8 @@ function toTokenCellInfo(item) {
     id: item.id,
     name: item.name || "Unnamed",
     team: getTeam(item),
+    position: item.position,
+    origin,
     anchor,
     size,
     cells,
@@ -392,6 +429,73 @@ function compareTokenInfo(a, b) {
   return a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
 }
 
+async function syncHitboxes(tokens) {
+  if (isUpdatingHitboxes || !showHitbox || !(await OBR.scene.isReady())) {
+    return;
+  }
+
+  isUpdatingHitboxes = true;
+  ignoreItemChangesUntil = Date.now() + 500;
+
+  try {
+    await clearHitboxes();
+    const shapesToAdd = tokens.flatMap(buildTokenHitboxes);
+
+    if (shapesToAdd.length) {
+      await OBR.scene.items.addItems(shapesToAdd);
+    }
+  } finally {
+    isUpdatingHitboxes = false;
+  }
+}
+
+async function clearHitboxes() {
+  if (!OBR.isAvailable || !(await OBR.scene.isReady())) {
+    return;
+  }
+
+  ignoreItemChangesUntil = Date.now() + 500;
+  const hitboxes = await getHitboxes();
+
+  if (hitboxes.length) {
+    await OBR.scene.items.deleteItems(hitboxes.map((item) => item.id));
+  }
+}
+
+async function getHitboxes() {
+  return OBR.scene.items.getItems((item) => item.metadata?.[HITBOX_KEY] === true);
+}
+
+function buildTokenHitboxes(token) {
+  const color = token.team === TEAM_ALLY ? "#2f9e44" : "#e03131";
+  const width = token.size.width * gridDpi;
+  const height = token.size.height * gridDpi;
+
+  return [
+    buildShape()
+      .name(`FlankWatch Hitbox: ${token.name}`)
+      .layer("DRAWING")
+      .position({
+        x: token.position.x - width / 2,
+        y: token.position.y - height / 2,
+      })
+      .width(width)
+      .height(height)
+      .fillColor(color)
+      .fillOpacity(0.28)
+      .strokeColor(color)
+      .strokeOpacity(0.9)
+      .strokeWidth(3)
+      .disableHit(true)
+      .locked(true)
+      .metadata({
+        [HITBOX_KEY]: true,
+        [HITBOX_TOKEN_KEY]: token.id,
+      })
+      .build(),
+  ];
+}
+
 function renderTokens(tokens) {
   tokenCountEl.textContent = String(tokens.length);
 
@@ -455,6 +559,7 @@ function escapeHtml(value) {
 }
 
 window.addEventListener("pagehide", () => {
+  window.clearTimeout(refreshTimer);
   unsubscribeItems?.();
   unsubscribeGrid?.();
 });
