@@ -1,5 +1,5 @@
 import "./style.css";
-import OBR, { buildShape } from "@owlbear-rodeo/sdk";
+import OBR, { Math2, buildShape } from "@owlbear-rodeo/sdk";
 
 const EXTENSION_ID = "com.flankwatch";
 const TEAM_KEY = `${EXTENSION_ID}/team`;
@@ -12,7 +12,7 @@ const TEAM_2 = "team2";
 const TEAM_3 = "team3";
 const TEAMS = [TEAM_DEFAULT, TEAM_1, TEAM_2, TEAM_3];
 const TEAM_LABELS = {
-  [TEAM_DEFAULT]: "Default",
+  [TEAM_DEFAULT]: "Ally",
   [TEAM_1]: "Team 1",
   [TEAM_2]: "Team 2",
   [TEAM_3]: "Team 3",
@@ -22,6 +22,13 @@ const TEAM_COLORS = {
   [TEAM_1]: "#e03131",
   [TEAM_2]: "#1971c2",
   [TEAM_3]: "#f08c00",
+};
+const TEAM_ALIASES = {
+  ally: TEAM_DEFAULT,
+  default: TEAM_DEFAULT,
+  [TEAM_1]: TEAM_1,
+  [TEAM_2]: TEAM_2,
+  [TEAM_3]: TEAM_3,
 };
 
 let gridDpi = 150;
@@ -99,7 +106,7 @@ const tokenRowsEl = document.querySelector("#token-rows");
 const showHitboxEl = document.querySelector("#show-hitbox");
 const teamTabsEl = document.querySelector(".team-tabs");
 
-let activeTeam = localStorage.getItem(`${EXTENSION_ID}/active-team`) || TEAM_DEFAULT;
+let activeTeam = normalizeTeam(localStorage.getItem(`${EXTENSION_ID}/active-team`));
 
 document.querySelector("#refresh").addEventListener("click", refreshTokenPositions);
 tokenRowsEl.addEventListener("change", handleTeamChange);
@@ -110,7 +117,7 @@ teamTabsEl.addEventListener("click", (event) => {
     return;
   }
 
-  activeTeam = button.dataset.teamTab;
+  activeTeam = normalizeTeam(button.dataset.teamTab);
   localStorage.setItem(`${EXTENSION_ID}/active-team`, activeTeam);
   updateActiveTab();
   refreshTokenPositions();
@@ -195,7 +202,7 @@ async function refreshTokenPositions() {
 
   await refreshGrid();
   const items = await OBR.scene.items.getItems(isCharacterImage);
-  const tokens = items.map(toTokenCellInfo);
+  const tokens = await Promise.all(items.map(toTokenCellInfo));
   const tokensWithAdjacency = tokens.map((token) => {
     return {
       ...token,
@@ -222,13 +229,13 @@ function isCharacterImage(item) {
   return item.type === "IMAGE" && item.layer === "CHARACTER" && item.visible;
 }
 
-function toTokenCellInfo(item) {
+async function toTokenCellInfo(item) {
   const size = getTokenSizeInCells(item);
   const origin = getTokenGridOrigin(item);
-  const anchor = worldToCell(origin);
+  const snappedOrigin = await snapGridCenter(origin, size);
+  const anchor = worldToCell(snappedOrigin);
   const start = getFootprintStart(anchor, size);
   const cells = getFootprintCells(start, size);
-  const alternateCells = getAlternateFootprintCells(anchor, start, size);
 
   return {
     id: item.id,
@@ -237,16 +244,20 @@ function toTokenCellInfo(item) {
     immune: isImmune(item),
     position: item.position,
     origin,
+    snappedOrigin,
     anchor,
     size,
     cells,
-    flankCells: mergeCells(cells, alternateCells),
+    flankCells: cells,
   };
 }
 
 function getTeam(item) {
-  const team = item.metadata?.[TEAM_KEY];
-  return TEAMS.includes(team) ? team : TEAM_DEFAULT;
+  return normalizeTeam(item.metadata?.[TEAM_KEY]);
+}
+
+function normalizeTeam(team) {
+  return TEAM_ALIASES[team] ?? TEAM_DEFAULT;
 }
 
 function isImmune(item) {
@@ -304,11 +315,8 @@ async function setTeam(ids, team) {
       (item) => ids.includes(item.id) && isCharacterImage(item),
       (items) => {
         for (const item of items) {
-          if (team === TEAM_DEFAULT) {
-            delete item.metadata[TEAM_KEY];
-          } else {
-            item.metadata[TEAM_KEY] = team;
-          }
+          ensureMetadata(item);
+          item.metadata[TEAM_KEY] = team;
         }
       },
     );
@@ -330,6 +338,7 @@ async function setImmune(ids, immune) {
       (item) => ids.includes(item.id) && isCharacterImage(item),
       (items) => {
         for (const item of items) {
+          ensureMetadata(item);
           if (immune) {
             item.metadata[IMMUNE_KEY] = true;
           } else {
@@ -345,21 +354,42 @@ async function setImmune(ids, immune) {
 }
 
 function getTokenSizeInCells(item) {
+  const dimensions = getImageSceneDimensions(item);
+
   return {
-    width: getImageGridSize(item.image.width, item.grid.dpi, item.scale.x),
-    height: getImageGridSize(item.image.height, item.grid.dpi, item.scale.y),
+    width: Math.max(1, Math.round(dimensions.width / gridDpi)),
+    height: Math.max(1, Math.round(dimensions.height / gridDpi)),
   };
 }
 
-function getImageGridSize(imagePixels, imageGridDpi, scale = 1) {
-  return Math.max(1, Math.round((imagePixels / imageGridDpi) * Math.abs(scale || 1)));
+function getImageSceneDimensions(item) {
+  const dpiScale = gridDpi / item.grid.dpi;
+
+  return {
+    width: Math.abs(item.image.width * dpiScale * item.scale.x),
+    height: Math.abs(item.image.height * dpiScale * item.scale.y),
+  };
 }
 
 function getTokenGridOrigin(item) {
-  return {
-    x: item.position.x + (item.grid.offset?.x ?? 0),
-    y: item.position.y + (item.grid.offset?.y ?? 0),
-  };
+  let center = { x: 0, y: 0 };
+
+  center = Math2.add(
+    center,
+    Math2.multiply(
+      {
+        x: item.image.width,
+        y: item.image.height,
+      },
+      0.5,
+    ),
+  );
+  center = Math2.subtract(center, item.grid.offset);
+  center = Math2.multiply(center, gridDpi / item.grid.dpi);
+  center = Math2.multiply(center, item.scale);
+  center = Math2.rotate(center, { x: 0, y: 0 }, item.rotation);
+
+  return Math2.add(center, item.position);
 }
 
 function worldToCell(position) {
@@ -393,44 +423,22 @@ function getFootprintCells(start, size) {
   return cells;
 }
 
-function getAlternateFootprintCells(anchor, start, size) {
-  if (size.width % 2 !== 0 && size.height % 2 !== 0) {
-    return [];
-  }
-
-  const alternateStart = {
-    x: size.width % 2 === 0 ? anchor.x : start.x,
-    y: size.height % 2 === 0 ? anchor.y : start.y,
-  };
-
-  if (alternateStart.x === start.x && alternateStart.y === start.y) {
-    return [];
-  }
-
-  return getFootprintCells(alternateStart, size);
-}
-
-function mergeCells(...cellGroups) {
-  const cellsByKey = new Map();
-
-  for (const cells of cellGroups) {
-    for (const cell of cells) {
-      cellsByKey.set(formatCell(cell), cell);
-    }
-  }
-
-  return [...cellsByKey.values()];
-}
-
 function isAdjacentToAlly(token, tokens) {
   const adjacentCells = getAdjacentCells(token.flankCells);
   return tokens.some((other) => {
     return (
       other.id !== token.id &&
-      other.team === token.team &&
+      areAllies(token, other) &&
       other.flankCells.some((cell) => adjacentCells.has(formatCell(cell)))
     );
   });
+}
+
+async function snapGridCenter(position, size) {
+  const useCorners = size.width % 2 === 0 || size.height % 2 === 0;
+  const useCenter = !useCorners;
+
+  return OBR.scene.grid.snapPosition(position, 1, useCorners, useCenter);
 }
 
 function isFlanked(token, tokens) {
@@ -445,11 +453,14 @@ function isFlanked(token, tokens) {
   }
 
   const candidates = tokens
-    .filter((other) => other.id !== token.id && other.team !== token.team)
+    .filter((other) => other.id !== token.id && areEnemies(token, other))
     .map((enemy) => {
+      const contactCells = getOccupiedAdjacentCells(enemy, token);
+
       return {
         enemy,
-        contacts: getOccupiedAdjacentCellCount(enemy, token),
+        contactCells,
+        contacts: contactCells.length,
       };
     })
     .filter((candidate) => candidate.contacts > 0);
@@ -483,14 +494,19 @@ function getRequiredFlankContacts(token) {
   return null;
 }
 
-function getOccupiedAdjacentCellCount(attacker, target) {
+function getOccupiedAdjacentCells(attacker, target) {
   const adjacentCells = getAdjacentCells(target.flankCells);
-  const occupiedCells = new Set(target.flankCells.map(formatCell));
+  const contactCellsByKey = new Map();
 
-  return attacker.flankCells.filter((cell) => {
+  for (const cell of attacker.flankCells) {
     const key = formatCell(cell);
-    return adjacentCells.has(key) || occupiedCells.has(key);
-  }).length;
+
+    if (adjacentCells.has(key)) {
+      contactCellsByKey.set(key, cell);
+    }
+  }
+
+  return [...contactCellsByKey.values()];
 }
 
 function hasValidFlankSet(candidates, requiredContacts, selected = [], contactTotal = 0, index = 0) {
@@ -504,7 +520,9 @@ function hasValidFlankSet(candidates, requiredContacts, selected = [], contactTo
 
   for (let i = index; i < candidates.length; i += 1) {
     const candidate = candidates[i];
-    const canUse = selected.every((other) => !areTokensAdjacent(other.enemy, candidate.enemy));
+    const canUse = selected.every((other) => {
+      return !areAllies(other.enemy, candidate.enemy) || !areTokensAdjacent(other.enemy, candidate.enemy);
+    });
 
     if (
       canUse &&
@@ -526,6 +544,20 @@ function hasValidFlankSet(candidates, requiredContacts, selected = [], contactTo
 function areTokensAdjacent(a, b) {
   const adjacentCells = getAdjacentCells(a.flankCells);
   return b.flankCells.some((cell) => adjacentCells.has(formatCell(cell)));
+}
+
+function areAllies(a, b) {
+  return a.team === b.team;
+}
+
+function areEnemies(a, b) {
+  return !areAllies(a, b);
+}
+
+function ensureMetadata(item) {
+  if (!item.metadata) {
+    item.metadata = {};
+  }
 }
 
 function getAdjacentCells(cells) {
@@ -609,8 +641,8 @@ function buildTokenHitboxes(token) {
       .name(`FlankWatch Hitbox: ${token.name}`)
       .layer("DRAWING")
       .position({
-        x: token.position.x - width / 2,
-        y: token.position.y - height / 2,
+        x: token.origin.x - width / 2,
+        y: token.origin.y - height / 2,
       })
       .width(width)
       .height(height)

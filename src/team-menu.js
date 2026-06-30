@@ -9,9 +9,16 @@ const TEAM_DEFAULT = "default";
 const TEAM_1 = "team1";
 const TEAM_2 = "team2";
 const TEAM_3 = "team3";
+const TEAM_ALIASES = {
+  ally: TEAM_DEFAULT,
+  default: TEAM_DEFAULT,
+  [TEAM_1]: TEAM_1,
+  [TEAM_2]: TEAM_2,
+  [TEAM_3]: TEAM_3,
+};
 
 const TEAMS = [
-  { id: TEAM_DEFAULT, label: "Default", color: "#2f9e44" },
+  { id: TEAM_DEFAULT, label: "Ally", color: "#2f9e44" },
   { id: TEAM_1, label: "Team 1", color: "#e03131" },
   { id: TEAM_2, label: "Team 2", color: "#1971c2" },
   { id: TEAM_3, label: "Team 3", color: "#f08c00" },
@@ -76,15 +83,14 @@ immuneToggleEl.addEventListener("change", async () => {
 });
 
 async function setTeam(ids, team) {
+  const normalizedTeam = normalizeTeam(team);
+
   await OBR.scene.items.updateItems(
     (item) => ids.includes(item.id) && item.type === "IMAGE" && item.layer === "CHARACTER",
     (items) => {
       for (const item of items) {
-        if (team === TEAM_DEFAULT) {
-          delete item.metadata[TEAM_KEY];
-        } else {
-          item.metadata[TEAM_KEY] = team;
-        }
+        ensureMetadata(item);
+        item.metadata[TEAM_KEY] = normalizedTeam;
       }
     },
   );
@@ -95,6 +101,7 @@ async function setImmune(ids, immune) {
     (item) => ids.includes(item.id) && item.type === "IMAGE" && item.layer === "CHARACTER",
     (items) => {
       for (const item of items) {
+        ensureMetadata(item);
         if (immune) {
           item.metadata[IMMUNE_KEY] = true;
         } else {
@@ -115,4 +122,14 @@ function applyTheme(theme) {
   root.style.setProperty("--line", theme.text.disabled);
   root.style.setProperty("--accent", theme.primary.main);
   root.style.setProperty("--focus", theme.primary.light);
+}
+
+function normalizeTeam(team) {
+  return TEAM_ALIASES[team] ?? TEAM_DEFAULT;
+}
+
+function ensureMetadata(item) {
+  if (!item.metadata) {
+    item.metadata = {};
+  }
 }
