@@ -3,12 +3,10 @@ import OBR, { buildShape } from "@owlbear-rodeo/sdk";
 
 import {
   EXTENSION_ID,
-  HITBOX_KEY,
-  HITBOX_TOKEN_KEY,
-  IMMUNE_KEY,
+  METADATA_FIELDS,
+  METADATA_KEY,
   TEAM_COLORS,
   TEAM_DEFAULT,
-  TEAM_KEY,
   TEAM_LABELS,
   TEAMS,
   normalizeTeam,
@@ -17,7 +15,7 @@ import { formatCell } from "./cells.js";
 import { isAdjacentToAlly, isFlanked } from "./flanking.js";
 import { toTokenCellInfo } from "./grid.js";
 import { escapeHtml } from "./html.js";
-import { ensureMetadata, isCharacterImage } from "./items.js";
+import { ensureExtensionMetadata, isCharacterImage, isFlankWatchHitbox } from "./items.js";
 import { applyTheme } from "./theme.js";
 
 let gridDpi = 150;
@@ -232,8 +230,8 @@ async function setTeam(ids, team) {
       (item) => ids.includes(item.id) && isCharacterImage(item),
       (items) => {
         for (const item of items) {
-          ensureMetadata(item);
-          item.metadata[TEAM_KEY] = team;
+          const metadata = ensureExtensionMetadata(item);
+          metadata[METADATA_FIELDS.team] = team;
         }
       },
     );
@@ -255,11 +253,11 @@ async function setImmune(ids, immune) {
       (item) => ids.includes(item.id) && isCharacterImage(item),
       (items) => {
         for (const item of items) {
-          ensureMetadata(item);
+          const metadata = ensureExtensionMetadata(item);
           if (immune) {
-            item.metadata[IMMUNE_KEY] = true;
+            metadata[METADATA_FIELDS.immune] = true;
           } else {
-            delete item.metadata[IMMUNE_KEY];
+            delete metadata[METADATA_FIELDS.immune];
           }
         }
       },
@@ -296,7 +294,7 @@ async function clearHitboxes() {
   }
 
   ignoreItemChangesUntil = Date.now() + 500;
-  const hitboxes = await OBR.scene.items.getItems((item) => item.metadata?.[HITBOX_KEY] === true);
+  const hitboxes = await OBR.scene.items.getItems(isFlankWatchHitbox);
 
   if (hitboxes.length) {
     await OBR.scene.items.deleteItems(hitboxes.map((item) => item.id));
@@ -326,8 +324,10 @@ function buildTokenHitbox(token) {
     .locked(true)
     .attachedTo(token.id)
     .metadata({
-      [HITBOX_KEY]: true,
-      [HITBOX_TOKEN_KEY]: token.id,
+      [METADATA_KEY]: {
+        [METADATA_FIELDS.hitbox]: true,
+        [METADATA_FIELDS.hitboxTokenId]: token.id,
+      },
     })
     .build();
 }

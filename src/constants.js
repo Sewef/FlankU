@@ -1,9 +1,12 @@
-export const EXTENSION_ID = "com.flankwatch";
+export const EXTENSION_ID = "com.sewef.flankwatch";
+export const METADATA_KEY = EXTENSION_ID;
 
-export const TEAM_KEY = `${EXTENSION_ID}/team`;
-export const IMMUNE_KEY = `${EXTENSION_ID}/immune`;
-export const HITBOX_KEY = `${EXTENSION_ID}/hitbox`;
-export const HITBOX_TOKEN_KEY = `${EXTENSION_ID}/hitbox-token-id`;
+export const METADATA_FIELDS = {
+  team: "team",
+  immune: "immune",
+  hitbox: "hitbox",
+  hitboxTokenId: "hitboxTokenId",
+};
 
 export const TEAM_DEFAULT = "default";
 export const TEAM_1 = "team1";

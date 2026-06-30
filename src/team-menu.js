@@ -2,8 +2,8 @@ import OBR from "@owlbear-rodeo/sdk";
 
 import "./team-menu.css";
 
-import { IMMUNE_KEY, TEAM_KEY, TEAMS, TEAM_COLORS, TEAM_LABELS, normalizeTeam } from "./constants.js";
-import { ensureMetadata, isCharacterImage } from "./items.js";
+import { METADATA_FIELDS, TEAMS, TEAM_COLORS, TEAM_LABELS, normalizeTeam } from "./constants.js";
+import { ensureExtensionMetadata, isCharacterImage } from "./items.js";
 import { applyTheme } from "./theme.js";
 
 document.querySelector("#team-menu").innerHTML = `
@@ -43,16 +43,19 @@ menuEl.addEventListener("click", async (event) => {
   }
 
   await updateSelectedTokens((item) => {
-    item.metadata[TEAM_KEY] = normalizeTeam(button.dataset.team);
+    const metadata = ensureExtensionMetadata(item);
+    metadata[METADATA_FIELDS.team] = normalizeTeam(button.dataset.team);
   });
 });
 
 immuneToggleEl.addEventListener("change", async () => {
   await updateSelectedTokens((item) => {
+    const metadata = ensureExtensionMetadata(item);
+
     if (immuneToggleEl.checked) {
-      item.metadata[IMMUNE_KEY] = true;
+      metadata[METADATA_FIELDS.immune] = true;
     } else {
-      delete item.metadata[IMMUNE_KEY];
+      delete metadata[METADATA_FIELDS.immune];
     }
   });
 });
@@ -69,7 +72,6 @@ async function updateSelectedTokens(update) {
     (item) => ids.includes(item.id) && isCharacterImage(item),
     (items) => {
       for (const item of items) {
-        ensureMetadata(item);
         update(item);
       }
     },
