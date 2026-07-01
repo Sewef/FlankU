@@ -167,6 +167,28 @@ h1 {
   width: 14px;
 }
 
+.ruleset-control {
+  align-items: center;
+  color: var(--muted);
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 750;
+  gap: 5px;
+  margin-left: 6px;
+}
+
+.ruleset-control select {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  font: inherit;
+  font-size: 11px;
+  min-height: 24px;
+  padding: 2px 3px;
+  width: 56px;
+}
+
 .team-tabs {
   display: grid;
   gap: 4px;

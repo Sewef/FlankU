@@ -9,6 +9,19 @@ export const METADATA_FIELDS = {
   hitboxTokenId: "hitboxTokenId",
 };
 
+export const RULESET_PTU = "ptu";
+export const RULESET_DND = "dnd";
+export const RULESETS = [RULESET_PTU, RULESET_DND];
+
+export const RULESET_LABELS = {
+  [RULESET_PTU]: "PTU",
+  [RULESET_DND]: "DnD",
+};
+
+export function normalizeRuleset(ruleset) {
+  return RULESETS.includes(ruleset) ? ruleset : RULESET_PTU;
+}
+
 export const TEAM_DEFAULT = "default";
 export const TEAM_1 = "team1";
 export const TEAM_2 = "team2";
@@ -17,7 +30,7 @@ export const TEAM_3 = "team3";
 export const TEAMS = [TEAM_DEFAULT, TEAM_1, TEAM_2, TEAM_3];
 
 export const TEAM_LABELS = {
-  [TEAM_DEFAULT]: "Ally",
+  [TEAM_DEFAULT]: "Default",
   [TEAM_1]: "Team 1",
   [TEAM_2]: "Team 2",
   [TEAM_3]: "Team 3",

@@ -5,10 +5,13 @@ import {
   EXTENSION_ID,
   METADATA_FIELDS,
   METADATA_KEY,
+  RULESET_LABELS,
+  RULESETS,
   TEAM_COLORS,
   TEAM_DEFAULT,
   TEAM_LABELS,
   TEAMS,
+  normalizeRuleset,
   normalizeTeam,
 } from "./constants.js";
 import { formatCell } from "./cells.js";
@@ -30,6 +33,7 @@ let showHitbox = localStorage.getItem(`${EXTENSION_ID}/show-hitbox`) === "true";
 let refreshTimer = null;
 let ignoreItemChangesUntil = 0;
 let activeTeam = normalizeTeam(localStorage.getItem(`${EXTENSION_ID}/active-team`));
+let activeRuleset = normalizeRuleset(localStorage.getItem(`${EXTENSION_ID}/ruleset`));
 
 document.querySelector("#app").innerHTML = `
   <main class="panel">
@@ -40,6 +44,18 @@ document.querySelector("#app").innerHTML = `
         <label class="option-toggle">
           <input id="show-hitbox" type="checkbox" />
           Hitbox
+        </label>
+        <label class="ruleset-control">
+          <span>Rules</span>
+          <select id="ruleset">
+            ${RULESETS.map((ruleset) => {
+              return `
+                <option value="${ruleset}" ${ruleset === activeRuleset ? "selected" : ""}>
+                  ${RULESET_LABELS[ruleset]}
+                </option>
+              `;
+            }).join("")}
+          </select>
         </label>
       </div>
     </header>
@@ -83,6 +99,7 @@ document.querySelector("#app").innerHTML = `
 
 const tokenRowsEl = document.querySelector("#token-rows");
 const showHitboxEl = document.querySelector("#show-hitbox");
+const rulesetEl = document.querySelector("#ruleset");
 const teamTabsEl = document.querySelector(".team-tabs");
 
 document.querySelector("#refresh").addEventListener("click", refreshTokenPositions);
@@ -90,6 +107,8 @@ tokenRowsEl.addEventListener("change", handleTableChange);
 teamTabsEl.addEventListener("click", handleTeamTabClick);
 showHitboxEl.checked = showHitbox;
 showHitboxEl.addEventListener("change", handleShowHitboxChange);
+rulesetEl.value = activeRuleset;
+rulesetEl.addEventListener("change", handleRulesetChange);
 
 if (OBR.isAvailable) {
   OBR.onReady(setup);
@@ -159,7 +178,7 @@ async function refreshTokenPositions() {
     return {
       ...token,
       adjacentToAlly: isAdjacentToAlly(token, tokens),
-      flanked: isFlanked(token, tokens),
+      flanked: isFlanked(token, tokens, activeRuleset),
     };
   });
 
@@ -217,6 +236,12 @@ async function handleShowHitboxChange() {
   } else {
     await clearHitboxes();
   }
+}
+
+async function handleRulesetChange() {
+  activeRuleset = normalizeRuleset(rulesetEl.value);
+  localStorage.setItem(`${EXTENSION_ID}/ruleset`, activeRuleset);
+  await refreshTokenPositions();
 }
 
 async function handleTableChange(event) {
