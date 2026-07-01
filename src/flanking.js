@@ -1,18 +1,6 @@
 import { formatCell, getAdjacentCells } from "./cells.js";
 import { RULESET_DND, RULESET_PTU } from "./constants.js";
 
-export function isAdjacentToAlly(token, tokens) {
-  const adjacentCells = getAdjacentCells(token.flankCells);
-
-  return tokens.some((other) => {
-    return (
-      other.id !== token.id &&
-      areAllies(token, other) &&
-      other.flankCells.some((cell) => adjacentCells.has(formatCell(cell)))
-    );
-  });
-}
-
 export function isFlanked(token, tokens, ruleset = RULESET_PTU) {
   if (token.immune) {
     return false;

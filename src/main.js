@@ -15,7 +15,7 @@ import {
   normalizeTeam,
 } from "./constants.js";
 import { formatCell } from "./cells.js";
-import { isAdjacentToAlly, isFlanked } from "./flanking.js";
+import { isFlanked } from "./flanking.js";
 import { toTokenCellInfo } from "./grid.js";
 import { escapeHtml } from "./html.js";
 import { ensureExtensionMetadata, isCharacterImage, isFlankUHitbox } from "./items.js";
@@ -203,7 +203,6 @@ async function refreshTokenPositions() {
   const tokensWithState = tokens.map((token) => {
     return {
       ...token,
-      adjacentToAlly: isAdjacentToAlly(token, tokens),
       flanked: isFlanked(token, tokens, activeRuleset),
     };
   });
@@ -438,7 +437,7 @@ function renderTokens(tokens) {
   if (!visibleTokens.length) {
     tokenRowsEl.innerHTML = `
       <tr>
-        <td colspan="7" class="empty">No ${TEAM_LABELS[activeTeam]} tokens found.</td>
+        <td colspan="6" class="empty">No ${TEAM_LABELS[activeTeam]} tokens found.</td>
       </tr>
     `;
     return;
