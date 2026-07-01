@@ -25,6 +25,7 @@ let unsubscribeTheme = null;
 let isUpdatingTeam = false;
 let isUpdatingImmune = false;
 let isUpdatingHitboxes = false;
+let isUpdatingFlankedMetadata = false;
 let showHitbox = localStorage.getItem(`${EXTENSION_ID}/show-hitbox`) === "true";
 let refreshTimer = null;
 let ignoreItemChangesUntil = 0;
@@ -38,7 +39,7 @@ document.querySelector("#app").innerHTML = `
         <button id="refresh" type="button">Refresh</button>
         <label class="option-toggle">
           <input id="show-hitbox" type="checkbox" />
-          Show Hitbox
+          Hitbox
         </label>
       </div>
     </header>
@@ -65,10 +66,10 @@ document.querySelector("#app").innerHTML = `
           <tr>
             <th>Name</th>
             <th>Team</th>
-            <th>Immune</th>
-            <th>Adjacent Ally</th>
+            <th>Imm.</th>
+            <th>Adj.</th>
             <th>Flanked</th>
-            <th>Position</th>
+            <th>Pos.</th>
             <th>Size</th>
           </tr>
         </thead>
@@ -98,6 +99,11 @@ async function setup() {
   applyTheme(await OBR.theme.getTheme());
   unsubscribeTheme = OBR.theme.onChange(applyTheme);
 
+  if ((await OBR.player.getRole()) !== "GM") {
+    renderNoGmMessage();
+    return;
+  }
+
   await registerContextMenus();
   await refreshGrid();
 
@@ -108,6 +114,14 @@ async function setup() {
 
   OBR.scene.onReadyChange(handleSceneReady);
   handleSceneReady(await OBR.scene.isReady());
+}
+
+function renderNoGmMessage() {
+  document.querySelector("#app").innerHTML = `
+    <main class="no-gm-panel">
+      U NO GM ᕕ( ᐛ )ᕗ
+    </main>
+  `;
 }
 
 async function handleSceneReady(ready) {
@@ -129,7 +143,7 @@ async function refreshGrid() {
 }
 
 async function refreshTokenPositions() {
-  if (isUpdatingHitboxes || !(await OBR.scene.isReady())) {
+  if (isUpdatingHitboxes || isUpdatingFlankedMetadata || !(await OBR.scene.isReady())) {
     return;
   }
 
@@ -151,6 +165,7 @@ async function refreshTokenPositions() {
 
   const sortedTokens = tokensWithState.sort(compareTokenInfo);
   renderTokens(sortedTokens);
+  await syncFlankedMetadata(sortedTokens);
   await syncHitboxes(sortedTokens);
 }
 
@@ -170,7 +185,7 @@ async function registerContextMenus() {
       {
         icon: "/icon.svg",
         label: "FlankWatch",
-        filter: { min: 1 },
+        filter: { min: 1, roles: ["GM"] },
       },
     ],
     embed: {
@@ -288,6 +303,33 @@ async function syncHitboxes(tokens) {
   }
 }
 
+async function syncFlankedMetadata(tokens) {
+  const flankedById = new Map(tokens.map((token) => [token.id, token.flanked]));
+
+  isUpdatingFlankedMetadata = true;
+  ignoreItemChangesUntil = Date.now() + 500;
+
+  try {
+    await OBR.scene.items.updateItems(
+      (item) => {
+        return (
+          flankedById.has(item.id) &&
+          isCharacterImage(item) &&
+          item.metadata?.[METADATA_KEY]?.[METADATA_FIELDS.isFlanked] !== flankedById.get(item.id)
+        );
+      },
+      (items) => {
+        for (const item of items) {
+          const metadata = ensureExtensionMetadata(item);
+          metadata[METADATA_FIELDS.isFlanked] = flankedById.get(item.id);
+        }
+      },
+    );
+  } finally {
+    isUpdatingFlankedMetadata = false;
+  }
+}
+
 async function clearHitboxes() {
   if (!OBR.isAvailable || !(await OBR.scene.isReady())) {
     return;
@@ -388,7 +430,7 @@ function renderTokenRow(token) {
 function renderStatus(value) {
   return `
     <span class="status ${value ? "yes" : "no"}">
-      ${value ? "Yes" : "No"}
+      ${value ? "Y" : "N"}
     </span>
   `;
 }

@@ -34,9 +34,9 @@ button {
   color: var(--accent-contrast);
   cursor: pointer;
   font: inherit;
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 750;
-  padding: 8px 12px;
+  padding: 6px 8px;
 }
 
 button:focus-visible {
@@ -51,7 +51,7 @@ input:focus-visible {
 
 #app {
   min-height: 100vh;
-  padding: 14px;
+  padding: 8px;
 }
 
 .panel {
@@ -60,25 +60,36 @@ input:focus-visible {
   border-radius: 8px;
   box-shadow: var(--shadow);
   display: grid;
-  gap: 14px;
+  gap: 8px;
   margin: 0 auto;
-  max-width: 720px;
-  padding: 16px;
+  max-width: 460px;
+  padding: 10px;
+}
+
+.no-gm-panel {
+  align-items: center;
+  color: var(--text);
+  display: flex;
+  font-size: 40px;
+  font-weight: 900;
+  justify-content: center;
+  min-height: calc(100vh - 28px);
+  text-align: center;
 }
 
 .header {
   align-items: start;
   display: flex;
-  gap: 14px;
+  gap: 8px;
   justify-content: space-between;
 }
 
 .eyebrow {
   color: var(--muted);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.08em;
-  margin: 0 0 3px;
+  margin: 0 0 4px;
   text-transform: uppercase;
 }
 
@@ -145,21 +156,21 @@ h1 {
   align-items: center;
   color: var(--muted);
   display: inline-flex;
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 750;
-  gap: 8px;
+  gap: 5px;
 }
 
 .option-toggle input {
   accent-color: var(--accent);
-  height: 17px;
-  width: 17px;
+  height: 14px;
+  width: 14px;
 }
 
 .team-tabs {
   display: grid;
-  gap: 6px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .team-tabs button {
@@ -169,10 +180,10 @@ h1 {
   border-bottom: 3px solid var(--team-color);
   color: var(--text);
   display: flex;
-  font-size: 12px;
+  font-size: 11px;
   justify-content: space-between;
-  min-height: 36px;
-  padding: 7px 8px;
+  min-height: 28px;
+  padding: 5px 6px;
 }
 
 .team-tabs button.active {
@@ -185,10 +196,10 @@ h1 {
   border-radius: 999px;
   color: var(--accent-contrast);
   display: inline-flex;
-  font-size: 11px;
+  font-size: 10px;
   justify-content: center;
-  min-width: 20px;
-  padding: 2px 6px;
+  min-width: 18px;
+  padding: 1px 5px;
 }
 
 .token-list {
@@ -199,22 +210,23 @@ h1 {
 
 table {
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: 11px;
+  table-layout: fixed;
   width: 100%;
 }
 
 th,
 td {
   border-bottom: 1px solid var(--line);
-  padding: 9px 10px;
+  padding: 6px 5px;
   text-align: left;
-  vertical-align: top;
+  vertical-align: middle;
 }
 
 th {
   background: color-mix(in srgb, var(--panel), var(--muted) 12%);
   color: var(--muted);
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 850;
   position: sticky;
   top: 0;
@@ -226,7 +238,7 @@ td {
 
 td:first-child {
   font-family: inherit;
-  min-width: 170px;
+  width: 112px;
 }
 
 td:nth-child(2),
@@ -236,10 +248,34 @@ td:nth-child(5) {
   text-align: center;
 }
 
+th:nth-child(2),
+td:nth-child(2) {
+  width: 66px;
+}
+
+th:nth-child(3),
+td:nth-child(3),
+th:nth-child(4),
+td:nth-child(4),
+th:nth-child(5),
+td:nth-child(5) {
+  width: 44px;
+}
+
+th:nth-child(6),
+td:nth-child(6),
+th:nth-child(7),
+td:nth-child(7) {
+  width: 42px;
+}
+
 td strong {
   display: block;
-  font-size: 13px;
+  font-size: 11px;
   line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 td small {
@@ -263,10 +299,10 @@ select[data-team-toggle] {
   border-radius: 6px;
   color: var(--text);
   font: inherit;
-  font-size: 12px;
-  min-height: 30px;
-  padding: 4px 6px;
-  width: 86px;
+  font-size: 11px;
+  min-height: 24px;
+  padding: 2px 3px;
+  width: 62px;
 }
 
 .immune-toggle {
@@ -277,18 +313,18 @@ select[data-team-toggle] {
 
 .immune-toggle input {
   accent-color: var(--accent);
-  height: 17px;
-  width: 17px;
+  height: 14px;
+  width: 14px;
 }
 
 .status {
   border-radius: 999px;
   display: inline-block;
   font-family: inherit;
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 850;
-  min-width: 34px;
-  padding: 3px 7px;
+  min-width: 24px;
+  padding: 2px 4px;
 }
 
 .status.yes {

@@ -4,6 +4,7 @@ export const METADATA_KEY = EXTENSION_ID;
 export const METADATA_FIELDS = {
   team: "team",
   immune: "immune",
+  isFlanked: "isFlanked",
   hitbox: "hitbox",
   hitboxTokenId: "hitboxTokenId",
 };
