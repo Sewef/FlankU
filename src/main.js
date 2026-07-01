@@ -1,10 +1,11 @@
 import "./style.css";
-import OBR, { buildShape } from "@owlbear-rodeo/sdk";
+import OBR, { buildImage, buildShape } from "@owlbear-rodeo/sdk";
 
 import {
   EXTENSION_ID,
   METADATA_FIELDS,
   METADATA_KEY,
+  URL,
   RULESET_LABELS,
   RULESETS,
   TEAM_COLORS,
@@ -18,8 +19,26 @@ import { formatCell } from "./cells.js";
 import { isFlanked } from "./flanking.js";
 import { toTokenCellInfo } from "./grid.js";
 import { escapeHtml } from "./html.js";
-import { ensureExtensionMetadata, isCharacterImage, isFlankUHitbox } from "./items.js";
+import {
+  ensureExtensionMetadata,
+  isCharacterImage,
+  isFlankUFlankedIcon,
+  isFlankUHitbox,
+} from "./items.js";
 import { applyTheme } from "./theme.js";
+
+const FLANKED_ICON_IMAGE = {
+  width: 256,
+  height: 256,
+  mime: "image/webp",
+  url: `${URL}/flanked.webp`,
+};
+const FLANKED_ICON_GRID = {
+  dpi: 256,
+  offset: { x: 0, y: 0 },
+};
+const REFRESH_DEBOUNCE_MS = 180;
+const IGNORE_OWN_ITEM_CHANGES_MS = 300;
 
 let gridDpi = 150;
 let unsubscribeItems = null;
@@ -29,10 +48,14 @@ let unsubscribeTheme = null;
 let isUpdatingTeam = false;
 let isUpdatingImmune = false;
 let isUpdatingHitboxes = false;
+let isUpdatingFlankedIcons = false;
 let isUpdatingFlankedMetadata = false;
 let showHitbox = localStorage.getItem(`${EXTENSION_ID}/show-hitbox`) === "true";
 let refreshTimer = null;
 let ignoreItemChangesUntil = 0;
+let lastHitboxSignature = "";
+let lastFlankedIconSignature = "";
+let lastFlankedMetadataSignature = "";
 let activeTeam = normalizeTeam(localStorage.getItem(`${EXTENSION_ID}/active-team`));
 let activeRuleset = normalizeRuleset();
 
@@ -104,7 +127,10 @@ const showHitboxEl = document.querySelector("#show-hitbox");
 const rulesetEl = document.querySelector("#ruleset");
 const teamTabsEl = document.querySelector(".team-tabs");
 
-document.querySelector("#refresh").addEventListener("click", refreshTokenPositions);
+document.querySelector("#refresh").addEventListener("click", () => {
+  resetSyncSignatures();
+  refreshTokenPositions();
+});
 tokenRowsEl.addEventListener("change", handleTableChange);
 teamTabsEl.addEventListener("click", handleTeamTabClick);
 showHitboxEl.checked = showHitbox;
@@ -148,8 +174,10 @@ async function handleSceneReady(ready) {
     unsubscribeItems = null;
     unsubscribeGrid?.();
     unsubscribeGrid = null;
+    resetSyncSignatures();
     renderTokens([]);
     await clearHitboxes();
+    await clearFlankedIcons();
     return;
   }
 
@@ -188,29 +216,39 @@ function handleRoomMetadataChange(metadata, refresh = true) {
 }
 
 async function refreshTokenPositions() {
-  if (isUpdatingHitboxes || isUpdatingFlankedMetadata || !(await OBR.scene.isReady())) {
-    return;
+  try {
+    if (
+      isUpdatingHitboxes ||
+      isUpdatingFlankedIcons ||
+      isUpdatingFlankedMetadata ||
+      !(await OBR.scene.isReady())
+    ) {
+      return;
+    }
+
+    await refreshGrid();
+
+    const items = await OBR.scene.items.getItems(isCharacterImage);
+    const tokens = await Promise.all(
+      items.map((item) => {
+        return toTokenCellInfo(item, gridDpi, (...args) => OBR.scene.grid.snapPosition(...args));
+      }),
+    );
+    const tokensWithState = tokens.map((token) => {
+      return {
+        ...token,
+        flanked: isFlanked(token, tokens, activeRuleset),
+      };
+    });
+
+    const sortedTokens = tokensWithState.sort(compareTokenInfo);
+    renderTokens(sortedTokens);
+    await syncFlankedMetadata(sortedTokens);
+    await syncFlankedIcons(sortedTokens);
+    await syncHitboxes(sortedTokens);
+  } catch (error) {
+    handleObrError(error, "refreshTokenPositions");
   }
-
-  await refreshGrid();
-
-  const items = await OBR.scene.items.getItems(isCharacterImage);
-  const tokens = await Promise.all(
-    items.map((item) => {
-      return toTokenCellInfo(item, gridDpi, (...args) => OBR.scene.grid.snapPosition(...args));
-    }),
-  );
-  const tokensWithState = tokens.map((token) => {
-    return {
-      ...token,
-      flanked: isFlanked(token, tokens, activeRuleset),
-    };
-  });
-
-  const sortedTokens = tokensWithState.sort(compareTokenInfo);
-  renderTokens(sortedTokens);
-  await syncFlankedMetadata(sortedTokens);
-  await syncHitboxes(sortedTokens);
 }
 
 function scheduleTokenRefresh() {
@@ -219,7 +257,9 @@ function scheduleTokenRefresh() {
   }
 
   window.clearTimeout(refreshTimer);
-  refreshTimer = window.setTimeout(refreshTokenPositions, 80);
+  refreshTimer = window.setTimeout(() => {
+    refreshTokenPositions();
+  }, REFRESH_DEBOUNCE_MS);
 }
 
 async function registerContextMenus() {
@@ -274,21 +314,25 @@ async function handleRulesetChange() {
 }
 
 async function handleTableChange(event) {
-  const immuneToggle = event.target.closest("[data-immune-toggle]");
-  const teamSelect = event.target.closest("[data-team-toggle]");
+  try {
+    const immuneToggle = event.target.closest("[data-immune-toggle]");
+    const teamSelect = event.target.closest("[data-team-toggle]");
 
-  if (immuneToggle && !isUpdatingImmune) {
-    await setImmune([immuneToggle.dataset.tokenId], immuneToggle.checked);
-    return;
-  }
+    if (immuneToggle && !isUpdatingImmune) {
+      await setImmune([immuneToggle.dataset.tokenId], immuneToggle.checked);
+      return;
+    }
 
-  if (teamSelect && !isUpdatingTeam) {
-    await setTeam([teamSelect.dataset.tokenId], teamSelect.value);
+    if (teamSelect && !isUpdatingTeam) {
+      await setTeam([teamSelect.dataset.tokenId], teamSelect.value);
+    }
+  } catch (error) {
+    handleObrError(error, "handleTableChange");
   }
 }
 
 async function setTeam(ids, team) {
-  if (!ids.length || !TEAMS.includes(team)) {
+  if (!ids.length || !TEAMS.includes(team) || !(await OBR.scene.isReady())) {
     return;
   }
 
@@ -311,7 +355,7 @@ async function setTeam(ids, team) {
 }
 
 async function setImmune(ids, immune) {
-  if (!ids.length) {
+  if (!ids.length || !(await OBR.scene.isReady())) {
     return;
   }
 
@@ -342,8 +386,13 @@ async function syncHitboxes(tokens) {
     return;
   }
 
+  const nextSignature = getHitboxSignature(tokens);
+  if (nextSignature === lastHitboxSignature) {
+    return;
+  }
+
   isUpdatingHitboxes = true;
-  ignoreItemChangesUntil = Date.now() + 500;
+  ignoreItemChangesUntil = Date.now() + IGNORE_OWN_ITEM_CHANGES_MS;
 
   try {
     await clearHitboxes();
@@ -352,16 +401,70 @@ async function syncHitboxes(tokens) {
     if (shapesToAdd.length) {
       await OBR.scene.items.addItems(shapesToAdd);
     }
+
+    lastHitboxSignature = nextSignature;
   } finally {
     isUpdatingHitboxes = false;
   }
 }
 
+async function syncFlankedIcons(tokens) {
+  if (isUpdatingFlankedIcons || !(await OBR.scene.isReady())) {
+    return;
+  }
+
+  const flankedTokens = tokens.filter((token) => token.flanked);
+  const nextSignature = getFlankedIconSignature(flankedTokens);
+  if (nextSignature === lastFlankedIconSignature) {
+    return;
+  }
+
+  isUpdatingFlankedIcons = true;
+  ignoreItemChangesUntil = Date.now() + IGNORE_OWN_ITEM_CHANGES_MS;
+
+  try {
+    await clearFlankedIcons();
+    const iconsToAdd = flankedTokens.map(buildFlankedIcon);
+
+    if (iconsToAdd.length) {
+      await OBR.scene.items.addItems(iconsToAdd);
+    }
+
+    lastFlankedIconSignature = nextSignature;
+  } finally {
+    isUpdatingFlankedIcons = false;
+  }
+}
+
+async function clearFlankedIcons() {
+  lastFlankedIconSignature = "";
+
+  if (!OBR.isAvailable || !(await OBR.scene.isReady())) {
+    return;
+  }
+
+  ignoreItemChangesUntil = Date.now() + IGNORE_OWN_ITEM_CHANGES_MS;
+  const icons = await getFlankedIcons();
+
+  if (icons.length) {
+    await OBR.scene.items.deleteItems(icons.map((item) => item.id));
+  }
+}
+
+async function getFlankedIcons() {
+  return OBR.scene.items.getItems(isFlankUFlankedIcon);
+}
+
 async function syncFlankedMetadata(tokens) {
+  const nextSignature = getFlankedMetadataSignature(tokens);
+  if (nextSignature === lastFlankedMetadataSignature) {
+    return;
+  }
+
   const flankedById = new Map(tokens.map((token) => [token.id, token.flanked]));
 
   isUpdatingFlankedMetadata = true;
-  ignoreItemChangesUntil = Date.now() + 500;
+  ignoreItemChangesUntil = Date.now() + IGNORE_OWN_ITEM_CHANGES_MS;
 
   try {
     await OBR.scene.items.updateItems(
@@ -379,22 +482,67 @@ async function syncFlankedMetadata(tokens) {
         }
       },
     );
+    lastFlankedMetadataSignature = nextSignature;
   } finally {
     isUpdatingFlankedMetadata = false;
   }
 }
 
 async function clearHitboxes() {
+  lastHitboxSignature = "";
+
   if (!OBR.isAvailable || !(await OBR.scene.isReady())) {
     return;
   }
 
-  ignoreItemChangesUntil = Date.now() + 500;
+  ignoreItemChangesUntil = Date.now() + IGNORE_OWN_ITEM_CHANGES_MS;
   const hitboxes = await OBR.scene.items.getItems(isFlankUHitbox);
 
   if (hitboxes.length) {
     await OBR.scene.items.deleteItems(hitboxes.map((item) => item.id));
   }
+}
+
+function resetSyncSignatures() {
+  lastHitboxSignature = "";
+  lastFlankedIconSignature = "";
+  lastFlankedMetadataSignature = "";
+}
+
+function getHitboxSignature(tokens) {
+  return tokens
+    .map((token) => {
+      return [
+        token.id,
+        token.team,
+        token.size.width,
+        token.size.height,
+        gridDpi,
+      ].join(":");
+    })
+    .sort()
+    .join("|");
+}
+
+function getFlankedIconSignature(tokens) {
+  return tokens
+    .map((token) => {
+      return [
+        token.id,
+        token.size.width,
+        token.size.height,
+        gridDpi,
+      ].join(":");
+    })
+    .sort()
+    .join("|");
+}
+
+function getFlankedMetadataSignature(tokens) {
+  return tokens
+    .map((token) => `${token.id}:${token.flanked}`)
+    .sort()
+    .join("|");
 }
 
 function buildTokenHitbox(token) {
@@ -423,6 +571,34 @@ function buildTokenHitbox(token) {
       [METADATA_KEY]: {
         [METADATA_FIELDS.hitbox]: true,
         [METADATA_FIELDS.hitboxTokenId]: token.id,
+      },
+    })
+    .build();
+}
+
+function buildFlankedIcon(token) {
+  const tokenWidth = token.size.width * gridDpi;
+  const tokenHeight = token.size.height * gridDpi;
+  const iconSize = Math.min(tokenWidth, tokenHeight) * 0.35;
+  const iconScale = iconSize / gridDpi;
+  const tokenLeft = token.origin.x - tokenWidth / 2;
+  const tokenTop = token.origin.y - tokenHeight / 2;
+
+  return buildImage(FLANKED_ICON_IMAGE, FLANKED_ICON_GRID)
+    .name(`Flank U Icon: ${token.name}`)
+    .layer("ATTACHMENT")
+    .position({
+      x: tokenLeft + tokenWidth - iconSize,
+      y: tokenTop,
+    })
+    .scale({ x: iconScale, y: iconScale })
+    .disableHit(true)
+    .locked(true)
+    .attachedTo(token.id)
+    .metadata({
+      [METADATA_KEY]: {
+        [METADATA_FIELDS.flankedIcon]: true,
+        [METADATA_FIELDS.flankedIconTokenId]: token.id,
       },
     })
     .build();
@@ -506,6 +682,19 @@ function updateActiveTab() {
 
 function compareTokenInfo(a, b) {
   return a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
+}
+
+function handleObrError(error, source) {
+  if (isTransientObrError(error)) {
+    return;
+  }
+
+  console.warn(`[Flank U] ${source} failed`, error);
+}
+
+function isTransientObrError(error) {
+  const name = error?.error?.name ?? error?.name;
+  return name === "MissingDataError" || name === "RateLimitHit";
 }
 
 window.addEventListener("pagehide", () => {

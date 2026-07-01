@@ -35,3 +35,7 @@ export function ensureExtensionMetadata(item) {
 export function isFlankUHitbox(item) {
   return getExtensionMetadata(item)?.[METADATA_FIELDS.hitbox] === true;
 }
+
+export function isFlankUFlankedIcon(item) {
+  return getExtensionMetadata(item)?.[METADATA_FIELDS.flankedIcon] === true;
+}

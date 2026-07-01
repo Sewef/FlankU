@@ -1,6 +1,8 @@
 export const EXTENSION_ID = "com.sewef.flankwatch";
 export const METADATA_KEY = EXTENSION_ID;
 
+export const URL = "http://localhost:5173";
+
 export const METADATA_FIELDS = {
   team: "team",
   immune: "immune",
@@ -8,6 +10,8 @@ export const METADATA_FIELDS = {
   ruleset: "ruleset",
   hitbox: "hitbox",
   hitboxTokenId: "hitboxTokenId",
+  flankedIcon: "flankedIcon",
+  flankedIconTokenId: "flankedIconTokenId",
 };
 
 export const RULESET_PTU = "ptu";
