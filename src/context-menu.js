@@ -3,7 +3,7 @@ import OBR from "@owlbear-rodeo/sdk";
 import "./context-menu.css";
 
 import { METADATA_FIELDS, TEAMS, TEAM_COLORS, TEAM_LABELS, normalizeTeam } from "./constants.js";
-import { ensureExtensionMetadata, isCharacterImage } from "./items.js";
+import { ensureExtensionMetadata, isFlankableImage } from "./items.js";
 import { applyTheme } from "./theme.js";
 
 document.querySelector("#context-menu").innerHTML = `
@@ -69,7 +69,7 @@ async function updateSelectedTokens(update) {
   }
 
   await OBR.scene.items.updateItems(
-    (item) => ids.includes(item.id) && isCharacterImage(item),
+    (item) => ids.includes(item.id) && isFlankableImage(item, true),
     (items) => {
       for (const item of items) {
         update(item);

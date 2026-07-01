@@ -21,7 +21,7 @@ import { toTokenCellInfo } from "./grid.js";
 import { escapeHtml } from "./html.js";
 import {
   ensureExtensionMetadata,
-  isCharacterImage,
+  isFlankableImage,
   isFlankUFlankedIcon,
   isFlankUHitbox,
 } from "./items.js";
@@ -53,11 +53,12 @@ let isUpdatingFlankedMetadata = false;
 let showHitbox = localStorage.getItem(`${EXTENSION_ID}/show-hitbox`) === "true";
 let refreshTimer = null;
 let ignoreItemChangesUntil = 0;
-let lastHitboxSignature = "";
-let lastFlankedIconSignature = "";
-let lastFlankedMetadataSignature = "";
+let lastHitboxSignature = null;
+let lastFlankedIconSignature = null;
+let lastFlankedMetadataSignature = null;
 let activeTeam = normalizeTeam(localStorage.getItem(`${EXTENSION_ID}/active-team`));
 let activeRuleset = normalizeRuleset();
+let activeMountsCanFlank = false;
 
 document.querySelector("#app").innerHTML = `
   <main class="panel">
@@ -68,9 +69,13 @@ document.querySelector("#app").innerHTML = `
           <button id="refresh" type="button">Refresh</button>
           <label class="option-toggle">
             <input id="show-hitbox" type="checkbox" />
-            Show Hitboxes
+            Hitboxes
           </label>
-          <label class="ruleset-control">
+          <label class="option-toggle">
+            <input id="mounts-can-flank" type="checkbox" />
+            Mounts can flank
+          </label>
+                    <label class="ruleset-control">
             <span>Rules</span>
             <select id="ruleset">
               ${RULESETS.map((ruleset) => {
@@ -125,6 +130,7 @@ document.querySelector("#app").innerHTML = `
 const tokenRowsEl = document.querySelector("#token-rows");
 const showHitboxEl = document.querySelector("#show-hitbox");
 const rulesetEl = document.querySelector("#ruleset");
+const mountsCanFlankEl = document.querySelector("#mounts-can-flank");
 const teamTabsEl = document.querySelector(".team-tabs");
 
 document.querySelector("#refresh").addEventListener("click", () => {
@@ -137,6 +143,8 @@ showHitboxEl.checked = showHitbox;
 showHitboxEl.addEventListener("change", handleShowHitboxChange);
 rulesetEl.value = activeRuleset;
 rulesetEl.addEventListener("change", handleRulesetChange);
+mountsCanFlankEl.checked = activeMountsCanFlank;
+mountsCanFlankEl.addEventListener("change", handleMountsCanFlankChange);
 
 if (OBR.isAvailable) {
   OBR.onReady(setup);
@@ -201,14 +209,19 @@ async function refreshRoomSettings() {
 }
 
 function handleRoomMetadataChange(metadata, refresh = true) {
-  const nextRuleset = normalizeRuleset(metadata?.[METADATA_KEY]?.[METADATA_FIELDS.ruleset]);
+  const extensionMetadata = metadata?.[METADATA_KEY];
+  const nextRuleset = normalizeRuleset(extensionMetadata?.[METADATA_FIELDS.ruleset]);
+  const nextMountsCanFlank = extensionMetadata?.[METADATA_FIELDS.mountsCanFlank] === true;
 
-  if (nextRuleset === activeRuleset) {
+  if (nextRuleset === activeRuleset && nextMountsCanFlank === activeMountsCanFlank) {
     return;
   }
 
   activeRuleset = nextRuleset;
+  activeMountsCanFlank = nextMountsCanFlank;
   rulesetEl.value = activeRuleset;
+  mountsCanFlankEl.checked = activeMountsCanFlank;
+  resetSyncSignatures();
 
   if (refresh) {
     refreshTokenPositions();
@@ -228,7 +241,9 @@ async function refreshTokenPositions() {
 
     await refreshGrid();
 
-    const items = await OBR.scene.items.getItems(isCharacterImage);
+    const items = await OBR.scene.items.getItems((item) => {
+      return isFlankableImage(item, activeMountsCanFlank);
+    });
     const tokens = await Promise.all(
       items.map((item) => {
         return toTokenCellInfo(item, gridDpi, (...args) => OBR.scene.grid.snapPosition(...args));
@@ -305,11 +320,15 @@ async function handleShowHitboxChange() {
 
 async function handleRulesetChange() {
   activeRuleset = normalizeRuleset(rulesetEl.value);
-  await OBR.room.setMetadata({
-    [METADATA_KEY]: {
-      [METADATA_FIELDS.ruleset]: activeRuleset,
-    },
-  });
+  await setRoomSettings({ [METADATA_FIELDS.ruleset]: activeRuleset });
+  resetSyncSignatures();
+  await refreshTokenPositions();
+}
+
+async function handleMountsCanFlankChange() {
+  activeMountsCanFlank = mountsCanFlankEl.checked;
+  await setRoomSettings({ [METADATA_FIELDS.mountsCanFlank]: activeMountsCanFlank });
+  resetSyncSignatures();
   await refreshTokenPositions();
 }
 
@@ -340,7 +359,7 @@ async function setTeam(ids, team) {
 
   try {
     await OBR.scene.items.updateItems(
-      (item) => ids.includes(item.id) && isCharacterImage(item),
+      (item) => ids.includes(item.id) && isFlankableImage(item, activeMountsCanFlank),
       (items) => {
         for (const item of items) {
           const metadata = ensureExtensionMetadata(item);
@@ -363,7 +382,7 @@ async function setImmune(ids, immune) {
 
   try {
     await OBR.scene.items.updateItems(
-      (item) => ids.includes(item.id) && isCharacterImage(item),
+      (item) => ids.includes(item.id) && isFlankableImage(item, activeMountsCanFlank),
       (items) => {
         for (const item of items) {
           const metadata = ensureExtensionMetadata(item);
@@ -469,16 +488,19 @@ async function syncFlankedMetadata(tokens) {
   try {
     await OBR.scene.items.updateItems(
       (item) => {
+        const currentValue = item.metadata?.[METADATA_KEY]?.[METADATA_FIELDS.isFlanked];
+        const nextValue = flankedById.get(item.id) ?? false;
+
         return (
-          flankedById.has(item.id) &&
-          isCharacterImage(item) &&
-          item.metadata?.[METADATA_KEY]?.[METADATA_FIELDS.isFlanked] !== flankedById.get(item.id)
+          isFlankableImage(item, true) &&
+          (flankedById.has(item.id) || currentValue === true) &&
+          currentValue !== nextValue
         );
       },
       (items) => {
         for (const item of items) {
           const metadata = ensureExtensionMetadata(item);
-          metadata[METADATA_FIELDS.isFlanked] = flankedById.get(item.id);
+          metadata[METADATA_FIELDS.isFlanked] = flankedById.get(item.id) ?? false;
         }
       },
     );
@@ -504,9 +526,9 @@ async function clearHitboxes() {
 }
 
 function resetSyncSignatures() {
-  lastHitboxSignature = "";
-  lastFlankedIconSignature = "";
-  lastFlankedMetadataSignature = "";
+  lastHitboxSignature = null;
+  lastFlankedIconSignature = null;
+  lastFlankedMetadataSignature = null;
 }
 
 function getHitboxSignature(tokens) {
@@ -518,6 +540,7 @@ function getHitboxSignature(tokens) {
         token.size.width,
         token.size.height,
         gridDpi,
+        activeMountsCanFlank,
       ].join(":");
     })
     .sort()
@@ -539,10 +562,21 @@ function getFlankedIconSignature(tokens) {
 }
 
 function getFlankedMetadataSignature(tokens) {
-  return tokens
+  return [activeMountsCanFlank, ...tokens
     .map((token) => `${token.id}:${token.flanked}`)
-    .sort()
+    .sort()]
     .join("|");
+}
+
+async function setRoomSettings(settings) {
+  const metadata = await OBR.room.getMetadata();
+
+  await OBR.room.setMetadata({
+    [METADATA_KEY]: {
+      ...(metadata?.[METADATA_KEY] ?? {}),
+      ...settings,
+    },
+  });
 }
 
 function buildTokenHitbox(token) {

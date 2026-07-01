@@ -4,6 +4,14 @@ export function isCharacterImage(item) {
   return item.type === "IMAGE" && item.layer === "CHARACTER" && item.visible;
 }
 
+export function isFlankableImage(item, includeMounts = false) {
+  return (
+    item.type === "IMAGE" &&
+    item.visible &&
+    (item.layer === "CHARACTER" || (includeMounts && item.layer === "MOUNT"))
+  );
+}
+
 export function getTeam(item) {
   return normalizeTeam(getExtensionMetadata(item)?.[METADATA_FIELDS.team]);
 }

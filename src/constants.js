@@ -9,6 +9,7 @@ export const METADATA_FIELDS = {
   immune: "immune",
   isFlanked: "isFlanked",
   ruleset: "ruleset",
+  mountsCanFlank: "mountsCanFlank",
   hitbox: "hitbox",
   hitboxTokenId: "hitboxTokenId",
   flankedIcon: "flankedIcon",
