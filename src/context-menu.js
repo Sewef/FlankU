@@ -1,13 +1,13 @@
 import OBR from "@owlbear-rodeo/sdk";
 
-import "./team-menu.css";
+import "./context-menu.css";
 
 import { METADATA_FIELDS, TEAMS, TEAM_COLORS, TEAM_LABELS, normalizeTeam } from "./constants.js";
 import { ensureExtensionMetadata, isCharacterImage } from "./items.js";
 import { applyTheme } from "./theme.js";
 
-document.querySelector("#team-menu").innerHTML = `
-  <section class="team-menu-panel">
+document.querySelector("#context-menu").innerHTML = `
+  <section class="context-menu-panel">
     ${TEAMS.map((team) => {
       return `
         <button type="button" data-team="${team}" style="--team-color: ${TEAM_COLORS[team]}">
@@ -20,12 +20,12 @@ document.querySelector("#team-menu").innerHTML = `
       <input id="immune-toggle" type="checkbox" />
       Immune to flank
     </label>
-    <p id="team-menu-message">Choose a team for the selected token(s).</p>
+    <p id="context-menu-message">Choose a team for the selected token(s).</p>
   </section>
 `;
 
-const menuEl = document.querySelector("#team-menu");
-const messageEl = document.querySelector("#team-menu-message");
+const menuEl = document.querySelector("#context-menu");
+const messageEl = document.querySelector("#context-menu-message");
 const immuneToggleEl = document.querySelector("#immune-toggle");
 
 if (OBR.isAvailable) {

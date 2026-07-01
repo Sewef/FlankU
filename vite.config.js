@@ -6,7 +6,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: "index.html",
-        teamMenu: "team-menu.html",
+        teamMenu: "context-menu.html",
       },
     },
   },

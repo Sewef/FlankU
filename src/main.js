@@ -40,7 +40,7 @@ document.querySelector("#app").innerHTML = `
   <main class="panel">
     <header class="header">
       <div>
-        <p class="eyebrow">Flank U</p>
+        <p class="eyebrow">Flank U very much</p>
         <div class="header-controls">
           <button id="refresh" type="button">Refresh</button>
           <label class="option-toggle">
@@ -127,14 +127,8 @@ async function setup() {
 
   await refreshRoomSettings();
   await registerContextMenus();
-  await refreshGrid();
 
   unsubscribeRoomMetadata = OBR.room.onMetadataChange(handleRoomMetadataChange);
-
-  unsubscribeGrid = OBR.scene.grid.onChange(async () => {
-    await refreshGrid();
-    await refreshTokenPositions();
-  });
 
   OBR.scene.onReadyChange(handleSceneReady);
   handleSceneReady(await OBR.scene.isReady());
@@ -152,12 +146,20 @@ async function handleSceneReady(ready) {
   if (!ready) {
     unsubscribeItems?.();
     unsubscribeItems = null;
+    unsubscribeGrid?.();
+    unsubscribeGrid = null;
     renderTokens([]);
     await clearHitboxes();
     return;
   }
 
   unsubscribeItems?.();
+  unsubscribeGrid?.();
+  await refreshGrid();
+  unsubscribeGrid = OBR.scene.grid.onChange(async () => {
+    await refreshGrid();
+    await refreshTokenPositions();
+  });
   unsubscribeItems = OBR.scene.items.onChange(scheduleTokenRefresh);
   await refreshTokenPositions();
 }
@@ -223,16 +225,16 @@ function scheduleTokenRefresh() {
 
 async function registerContextMenus() {
   await OBR.contextMenu.create({
-    id: `${EXTENSION_ID}/team-menu`,
+    id: `${EXTENSION_ID}/context-menu`,
     icons: [
       {
         icon: "/icon.svg",
-        label: "Flank ",
+        label: "Flank U",
         filter: { min: 1, roles: ["GM"] },
       },
     ],
     embed: {
-      url: "/team-menu.html",
+      url: "/context-menu.html",
       height: 150,
     },
   });
