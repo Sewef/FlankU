@@ -18,12 +18,13 @@ import { formatCell } from "./cells.js";
 import { isAdjacentToAlly, isFlanked } from "./flanking.js";
 import { toTokenCellInfo } from "./grid.js";
 import { escapeHtml } from "./html.js";
-import { ensureExtensionMetadata, isCharacterImage, isFlankWatchHitbox } from "./items.js";
+import { ensureExtensionMetadata, isCharacterImage, isFlankUHitbox } from "./items.js";
 import { applyTheme } from "./theme.js";
 
 let gridDpi = 150;
 let unsubscribeItems = null;
 let unsubscribeGrid = null;
+let unsubscribeRoomMetadata = null;
 let unsubscribeTheme = null;
 let isUpdatingTeam = false;
 let isUpdatingImmune = false;
@@ -33,30 +34,32 @@ let showHitbox = localStorage.getItem(`${EXTENSION_ID}/show-hitbox`) === "true";
 let refreshTimer = null;
 let ignoreItemChangesUntil = 0;
 let activeTeam = normalizeTeam(localStorage.getItem(`${EXTENSION_ID}/active-team`));
-let activeRuleset = normalizeRuleset(localStorage.getItem(`${EXTENSION_ID}/ruleset`));
+let activeRuleset = normalizeRuleset();
 
 document.querySelector("#app").innerHTML = `
   <main class="panel">
     <header class="header">
       <div>
-        <p class="eyebrow">FlankWatch</p>
-        <button id="refresh" type="button">Refresh</button>
-        <label class="option-toggle">
-          <input id="show-hitbox" type="checkbox" />
-          Hitbox
-        </label>
-        <label class="ruleset-control">
-          <span>Rules</span>
-          <select id="ruleset">
-            ${RULESETS.map((ruleset) => {
-              return `
-                <option value="${ruleset}" ${ruleset === activeRuleset ? "selected" : ""}>
-                  ${RULESET_LABELS[ruleset]}
-                </option>
-              `;
-            }).join("")}
-          </select>
-        </label>
+        <p class="eyebrow">Flank U</p>
+        <div class="header-controls">
+          <button id="refresh" type="button">Refresh</button>
+          <label class="option-toggle">
+            <input id="show-hitbox" type="checkbox" />
+            Show Hitboxes
+          </label>
+          <label class="ruleset-control">
+            <span>Rules</span>
+            <select id="ruleset">
+              ${RULESETS.map((ruleset) => {
+                return `
+                  <option value="${ruleset}" ${ruleset === activeRuleset ? "selected" : ""}>
+                    ${RULESET_LABELS[ruleset]}
+                  </option>
+                `;
+              }).join("")}
+            </select>
+          </label>
+        </div>
       </div>
     </header>
 
@@ -83,7 +86,6 @@ document.querySelector("#app").innerHTML = `
             <th>Name</th>
             <th>Team</th>
             <th>Imm.</th>
-            <th>Adj.</th>
             <th>Flanked</th>
             <th>Pos.</th>
             <th>Size</th>
@@ -123,8 +125,11 @@ async function setup() {
     return;
   }
 
+  await refreshRoomSettings();
   await registerContextMenus();
   await refreshGrid();
+
+  unsubscribeRoomMetadata = OBR.room.onMetadataChange(handleRoomMetadataChange);
 
   unsubscribeGrid = OBR.scene.grid.onChange(async () => {
     await refreshGrid();
@@ -159,6 +164,25 @@ async function handleSceneReady(ready) {
 
 async function refreshGrid() {
   gridDpi = await OBR.scene.grid.getDpi();
+}
+
+async function refreshRoomSettings() {
+  handleRoomMetadataChange(await OBR.room.getMetadata(), false);
+}
+
+function handleRoomMetadataChange(metadata, refresh = true) {
+  const nextRuleset = normalizeRuleset(metadata?.[METADATA_KEY]?.[METADATA_FIELDS.ruleset]);
+
+  if (nextRuleset === activeRuleset) {
+    return;
+  }
+
+  activeRuleset = nextRuleset;
+  rulesetEl.value = activeRuleset;
+
+  if (refresh) {
+    refreshTokenPositions();
+  }
 }
 
 async function refreshTokenPositions() {
@@ -203,7 +227,7 @@ async function registerContextMenus() {
     icons: [
       {
         icon: "/icon.svg",
-        label: "FlankWatch",
+        label: "Flank ",
         filter: { min: 1, roles: ["GM"] },
       },
     ],
@@ -240,7 +264,11 @@ async function handleShowHitboxChange() {
 
 async function handleRulesetChange() {
   activeRuleset = normalizeRuleset(rulesetEl.value);
-  localStorage.setItem(`${EXTENSION_ID}/ruleset`, activeRuleset);
+  await OBR.room.setMetadata({
+    [METADATA_KEY]: {
+      [METADATA_FIELDS.ruleset]: activeRuleset,
+    },
+  });
   await refreshTokenPositions();
 }
 
@@ -361,7 +389,7 @@ async function clearHitboxes() {
   }
 
   ignoreItemChangesUntil = Date.now() + 500;
-  const hitboxes = await OBR.scene.items.getItems(isFlankWatchHitbox);
+  const hitboxes = await OBR.scene.items.getItems(isFlankUHitbox);
 
   if (hitboxes.length) {
     await OBR.scene.items.deleteItems(hitboxes.map((item) => item.id));
@@ -374,7 +402,7 @@ function buildTokenHitbox(token) {
   const height = token.size.height * gridDpi;
 
   return buildShape()
-    .name(`FlankWatch Hitbox: ${token.name}`)
+    .name(`Flank U Hitbox: ${token.name}`)
     .layer("DRAWING")
     .position({
       x: token.origin.x - width / 2,
@@ -444,7 +472,6 @@ function renderTokenRow(token) {
           />
         </label>
       </td>
-      <td>${renderStatus(token.adjacentToAlly)}</td>
       <td>${renderStatus(token.flanked)}</td>
       <td>${formatCell(token.anchor)}</td>
       <td>${token.size.width}x${token.size.height}</td>
@@ -484,5 +511,6 @@ window.addEventListener("pagehide", () => {
   window.clearTimeout(refreshTimer);
   unsubscribeItems?.();
   unsubscribeGrid?.();
+  unsubscribeRoomMetadata?.();
   unsubscribeTheme?.();
 });

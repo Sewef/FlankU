@@ -5,6 +5,7 @@ export const METADATA_FIELDS = {
   team: "team",
   immune: "immune",
   isFlanked: "isFlanked",
+  ruleset: "ruleset",
   hitbox: "hitbox",
   hitboxTokenId: "hitboxTokenId",
 };
@@ -14,8 +15,8 @@ export const RULESET_DND = "dnd";
 export const RULESETS = [RULESET_PTU, RULESET_DND];
 
 export const RULESET_LABELS = {
-  [RULESET_PTU]: "PTU",
-  [RULESET_DND]: "DnD",
+  [RULESET_PTU]: "PTU 1.05",
+  [RULESET_DND]: "DnD 5e 2014",
 };
 
 export function normalizeRuleset(ruleset) {

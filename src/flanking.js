@@ -55,21 +55,28 @@ function isFlankedPtu(token, tokens) {
 function isFlankedDnd(token, tokens) {
   const candidates = tokens
     .filter((other) => other.id !== token.id && areEnemies(token, other))
-    .filter((enemy) => getOccupiedAdjacentCells(enemy, token).length > 0)
     .map((enemy) => {
+      const contactCells = getOccupiedAdjacentCells(enemy, token);
+
       return {
         enemy,
-        region: getTokenRegionAroundTarget(enemy, token),
+        regions: contactCells.map((cell) => getCellRegionAroundTarget(cell, token)),
       };
     })
-    .filter((candidate) => isOuterRegion(candidate.region));
+    .map((candidate) => {
+      return {
+        ...candidate,
+        regions: candidate.regions.filter(isOuterRegion),
+      };
+    })
+    .filter((candidate) => candidate.regions.length > 0);
 
   for (let i = 0; i < candidates.length; i += 1) {
     for (let j = i + 1; j < candidates.length; j += 1) {
       const a = candidates[i];
       const b = candidates[j];
 
-      if (areAllies(a.enemy, b.enemy) && areOppositeRegions(a.region, b.region)) {
+      if (areAllies(a.enemy, b.enemy) && haveOppositeRegions(a.regions, b.regions)) {
         return true;
       }
     }
@@ -140,22 +147,12 @@ function areTokensAdjacent(a, b) {
   return b.flankCells.some((cell) => adjacentCells.has(formatCell(cell)));
 }
 
-function getTokenRegionAroundTarget(token, target) {
-  const tokenCenter = getCellsCenter(token.flankCells);
+function getCellRegionAroundTarget(cell, target) {
   const targetBounds = getCellsBounds(target.flankCells);
 
   return {
-    x: getAxisRegion(tokenCenter.x, targetBounds.minX - 0.5, targetBounds.maxX + 0.5),
-    y: getAxisRegion(tokenCenter.y, targetBounds.minY - 0.5, targetBounds.maxY + 0.5),
-  };
-}
-
-function getCellsCenter(cells) {
-  const bounds = getCellsBounds(cells);
-
-  return {
-    x: (bounds.minX + bounds.maxX) / 2,
-    y: (bounds.minY + bounds.maxY) / 2,
+    x: getAxisRegion(cell.x, targetBounds.minX - 0.5, targetBounds.maxX + 0.5),
+    y: getAxisRegion(cell.y, targetBounds.minY - 0.5, targetBounds.maxY + 0.5),
   };
 }
 
@@ -196,6 +193,10 @@ function isOuterRegion(region) {
 
 function areOppositeRegions(a, b) {
   return a.x === -b.x && a.y === -b.y && isOuterRegion(a) && isOuterRegion(b);
+}
+
+function haveOppositeRegions(aRegions, bRegions) {
+  return aRegions.some((a) => bRegions.some((b) => areOppositeRegions(a, b)));
 }
 
 function areAllies(a, b) {

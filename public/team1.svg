@@ -1,9 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-  <defs>
-    <mask id="cut">
-      <rect width="24" height="24" fill="#fff"/>
-      <path fill="#000" d="M10.8 17V8.9L8.9 10V8l2.4-1.5H13V17h-2.2Z"/>
-    </mask>
-  </defs>
-  <circle cx="12" cy="12" r="10" fill="#e03131" mask="url(#cut)"/>
-</svg>

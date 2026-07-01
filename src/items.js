@@ -32,6 +32,6 @@ export function ensureExtensionMetadata(item) {
   return item.metadata[METADATA_KEY];
 }
 
-export function isFlankWatchHitbox(item) {
+export function isFlankUHitbox(item) {
   return getExtensionMetadata(item)?.[METADATA_FIELDS.hitbox] === true;
 }
