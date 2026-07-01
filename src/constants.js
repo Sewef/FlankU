@@ -1,7 +1,8 @@
 export const EXTENSION_ID = "com.sewef.flankwatch";
 export const METADATA_KEY = EXTENSION_ID;
 
-export const URL = "http://localhost:5173";
+// export const URL = "http://localhost:5173";
+export const URL = "https://flanku.onrender.com/";
 
 export const METADATA_FIELDS = {
   team: "team",
